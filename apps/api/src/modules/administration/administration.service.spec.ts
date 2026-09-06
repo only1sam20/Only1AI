@@ -1,0 +1,1 @@
+import { AdministrationService } from './administration.service'; describe('AdministrationService', () => { it('prevents an admin from disabling themselves', async () => { const service = new AdministrationService({} as never, {} as never); await expect(service.updateUser('admin', 'admin', { isActive: false })).rejects.toThrow('cannot reduce their own access'); }); });

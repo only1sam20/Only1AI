@@ -1,0 +1,21 @@
+# Use together with docker-compose.yml. TLS is terminated by the hosting platform or load balancer.
+services:
+  postgres:
+    ports: []
+    restart: unless-stopped
+  redis:
+    ports: []
+    restart: unless-stopped
+  api:
+    ports: []
+    restart: unless-stopped
+    environment:
+      WEB_ORIGIN: ${WEB_ORIGIN:?Set WEB_ORIGIN to the public HTTPS origin}
+  ai:
+    ports: []
+    restart: unless-stopped
+  web:
+    ports: []
+    restart: unless-stopped
+  nginx:
+    restart: unless-stopped

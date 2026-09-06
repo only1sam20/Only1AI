@@ -1,0 +1,2 @@
+import { MarketScannerService } from './market-scanner.service';
+describe('MarketScannerService', () => { it('rejects monitors for another user’s core', async () => { const service = new MarketScannerService({} as never, { exists: jest.fn().mockResolvedValue(false) } as never, {} as never); await expect(service.create('u', { only1CoreId: '00000000-0000-0000-0000-000000000001', symbol: 'EURUSD', marketType: 'forex' as never, timeframe: '15m' })).rejects.toThrow('Only1Core not found'); }); });

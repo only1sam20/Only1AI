@@ -1,0 +1,2 @@
+import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+@Entity({ name: 'analyses' }) export class Analysis { @PrimaryGeneratedColumn('uuid') id!: string; @Index() @Column({ name: 'user_id', type: 'uuid' }) userId!: string; @Column({ name: 'assessment_id', type: 'uuid' }) assessmentId!: string; @Column({ length: 160 }) title!: string; @Column({ type: 'text' }) summary!: string; @Column({ type: 'jsonb' }) evidence!: Record<string, unknown>; @CreateDateColumn({ name: 'created_at' }) createdAt!: Date; }

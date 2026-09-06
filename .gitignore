@@ -1,0 +1,16 @@
+node_modules/
+.next/
+.next-*/
+.next-production/
+dist/
+coverage/
+.env
+.env.local
+*.log
+__pycache__/
+.pytest_cache/
+.venv/
+.dart_tool/
+build/
+.idea/
+.vscode/

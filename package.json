@@ -1,0 +1,29 @@
+{
+  "name": "only1ai",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "apps/api",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace=@only1ai/web",
+    "dev:api": "npm run start:dev --workspace=@only1ai/api",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "format:check": "prettier --check .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@jridgewell/sourcemap-codec": "^1.5.5",
+    "ajv": "^8.20.0",
+    "enhanced-resolve": "^5.24.5",
+    "prettier": "^3.5.3"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=11.0.0"
+  }
+}
