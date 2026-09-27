@@ -1,15 +1,21 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { StrategyRule } from '../strategies/entities/strategy-rule.entity';
 import { Strategy } from '../strategies/entities/strategy.entity';
+import { MarketMonitor } from '../market-scanner/entities/market-monitor.entity';
 import { EvaluateConfluenceDto } from './dto/evaluate-confluence.dto';
 import { ConfluenceAssessment, ConfluenceOutcome } from './entities/confluence-assessment.entity';
 @Injectable()
 export class ConfluenceService {
-  constructor(@InjectRepository(ConfluenceAssessment) private readonly assessments: Repository<ConfluenceAssessment>, @InjectRepository(Strategy) private readonly strategies: Repository<Strategy>, @InjectRepository(StrategyRule) private readonly rules: Repository<StrategyRule>) {}
+  constructor(@InjectRepository(ConfluenceAssessment) private readonly assessments: Repository<ConfluenceAssessment>, @InjectRepository(Strategy) private readonly strategies: Repository<Strategy>, @InjectRepository(StrategyRule) private readonly rules: Repository<StrategyRule>, @InjectRepository(MarketMonitor) private readonly monitors: Repository<MarketMonitor>) {}
   async evaluate(userId: string, dto: EvaluateConfluenceDto) {
     const strategy = await this.strategies.findOneBy({ id: dto.strategyId, userId }); if (!strategy) throw new NotFoundException('Strategy not found.');
+    if (dto.monitorId) {
+      const monitor = await this.monitors.findOneBy({ id: dto.monitorId, userId });
+      if (!monitor) throw new NotFoundException('Market monitor not found.');
+      if (monitor.only1CoreId !== strategy.only1CoreId || (monitor.strategyId && monitor.strategyId !== strategy.id)) throw new BadRequestException('Market monitor does not match this strategy.');
+    }
     const rules = await this.rules.findBy({ strategyId: strategy.id });
     const observed = new Set(dto.observations.map((o) => `${o.category.trim().toLowerCase()}::${o.condition.trim().toLowerCase()}`));
     const matched = rules.filter((rule) => observed.has(`${rule.category.toLowerCase()}::${rule.condition.toLowerCase()}`));

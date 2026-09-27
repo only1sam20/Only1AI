@@ -1,10 +1,95 @@
 'use client';
+
+import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
-import { api, Only1Core, Strategy } from '../lib/api';
+import { api, Only1Core, Strategy, StrategyRule } from '../lib/api';
+
+type RuleDraft = Pick<StrategyRule, 'category' | 'condition' | 'priority'>;
+const emptyRule = (): RuleDraft => ({ category: '', condition: '', priority: 70 });
 
 export function StrategyBuilder() {
-  const [cores, setCores] = useState<Only1Core[]>([]); const [strategies, setStrategies] = useState<Strategy[]>([]); const [message, setMessage] = useState('');
-  useEffect(() => { Promise.all([api<Only1Core[]>('/only1-cores'), api<Strategy[]>('/strategies')]).then(([loadedCores, loadedStrategies]) => { setCores(loadedCores); setStrategies(loadedStrategies); }).catch(() => setMessage('Sign in and create an Only1Core before adding a strategy.')); }, []);
-  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); try { const strategy = await api<Strategy>('/strategies', { method: 'POST', body: JSON.stringify({ only1CoreId: form.get('only1CoreId'), name: form.get('name'), timeframe: form.get('timeframe'), description: form.get('description'), rules: [{ category: form.get('category'), condition: form.get('condition'), priority: Number(form.get('priority')) }] }) }); setStrategies((current) => [strategy, ...current]); event.currentTarget.reset(); setMessage('Draft strategy created. Add more rules in the API-backed builder next.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not create strategy.'); } }
-  return <section className="manager-panel"><div className="manager-heading"><div><p className="eyebrow">YOUR STRATEGIES</p><h2>Build a clear framework</h2></div><span className="count-tag">{strategies.length} drafts</span></div>{cores.length > 0 && <form className="inline-form strategy-form" onSubmit={submit}><label>Only1Core<select name="only1CoreId" required>{cores.map((core) => <option value={core.id} key={core.id}>{core.name}</option>)}</select></label><label>Strategy name<input name="name" minLength={3} maxLength={100} placeholder="e.g. London breakout" required /></label><div className="form-row"><label>Timeframe<input name="timeframe" placeholder="e.g. 15m" maxLength={32} /></label><label>Rule priority<input name="priority" type="number" min="1" max="100" defaultValue="70" required /></label></div><label>First confluence category<input name="category" placeholder="e.g. session" maxLength={48} required /></label><label>What must be true?<input name="condition" placeholder="e.g. is London open" maxLength={120} required /></label><label>Description <span>optional</span><input name="description" maxLength={1000} placeholder="What does this framework help you review?" /></label><button className="button" type="submit">Save draft strategy →</button></form>}{strategies.length > 0 && <div className="core-list">{strategies.map((strategy) => <article key={strategy.id}><div><strong>{strategy.name}</strong><p>{strategy.timeframe ?? 'Timeframe not set'} · Attached to Only1Core</p></div><span>{strategy.status}</span></article>)}</div>}<p className="form-status" role="status">{message}</p></section>;
+  const [cores, setCores] = useState<Only1Core[]>([]);
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [rules, setRules] = useState<RuleDraft[]>([emptyRule()]);
+  const [editing, setEditing] = useState<Strategy | null>(null);
+  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [pending, setPending] = useState(false);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([api<Only1Core[]>('/only1-cores'), api<Strategy[]>('/strategies')])
+      .then(([loadedCores, loadedStrategies]) => { setCores(loadedCores); setStrategies(loadedStrategies); })
+      .catch(() => setMessage('Sign in and create an Only1Core before adding a strategy.'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  function resetForm() { setEditing(null); setRules([emptyRule()]); }
+  function updateRule(index: number, changes: Partial<RuleDraft>) { setRules((current) => current.map((rule, ruleIndex) => ruleIndex === index ? { ...rule, ...changes } : rule)); }
+
+  async function beginEdit(strategy: Strategy) {
+    setUpdatingId(strategy.id);
+    setMessage('');
+    try {
+      const detail = await api<Strategy>(`/strategies/${strategy.id}`);
+      setEditing(detail);
+      setRules(detail.rules?.length ? detail.rules.map(({ category, condition, priority }) => ({ category, condition, priority })) : [emptyRule()]);
+      document.getElementById('strategy-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not open this strategy.');
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (rules.some((rule) => !rule.category.trim() || !rule.condition.trim())) { setMessage('Add a category and condition for every rule before saving.'); return; }
+    setPending(true);
+    setMessage('');
+    const form = new FormData(event.currentTarget);
+    const payload = { only1CoreId: form.get('only1CoreId'), name: form.get('name'), timeframe: form.get('timeframe'), description: form.get('description'), rules };
+    try {
+      const strategy = editing
+        ? await api<Strategy>(`/strategies/${editing.id}`, { method: 'PATCH', body: JSON.stringify({ name: payload.name, timeframe: payload.timeframe, description: payload.description, rules }) })
+        : await api<Strategy>('/strategies', { method: 'POST', body: JSON.stringify(payload) });
+      setStrategies((current) => editing ? current.map((item) => item.id === strategy.id ? strategy : item) : [strategy, ...current]);
+      setMessage(editing ? 'Strategy and confluence rules updated.' : 'Draft strategy created. You can refine its rules at any time.');
+      resetForm();
+      event.currentTarget.reset();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not save this strategy.');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function toggleStatus(strategy: Strategy) {
+    setUpdatingId(strategy.id);
+    try {
+      const status = strategy.status === 'active' ? 'draft' : 'active';
+      const updated = await api<Strategy>(`/strategies/${strategy.id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+      setStrategies((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setMessage(status === 'active' ? 'Strategy marked active and ready for a future scanner connection.' : 'Strategy returned to draft.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not update this strategy.');
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  if (loading) return <div className="loading-panel" aria-label="Loading strategies"><div className="skeleton" /><div className="skeleton" /></div>;
+  if (!cores.length) return <section className="manager-panel"><div className="empty-inline"><p className="eyebrow">FIRST STEP</p><h3>Create an Only1Core before defining rules</h3><p>Strategies belong to a private Only1Core, which keeps each market process clear and separate.</p><Link className="button" href="/only1core">Create an Only1Core</Link></div><p className="form-status is-error" role="status">{message}</p></section>;
+
+  return <section className="manager-panel"><div className="manager-heading"><div><p className="eyebrow">YOUR STRATEGIES</p><h2>{editing ? `Editing ${editing.name}` : 'Build a clear framework'}</h2></div><span className="count-tag">{strategies.length} total</span></div>
+    <form className="inline-form strategy-form" id="strategy-form" onSubmit={submit}>
+      <label>Only1Core<select key={`${editing?.id ?? 'new'}-core`} name="only1CoreId" defaultValue={editing?.only1CoreId ?? cores[0]?.id} disabled={Boolean(editing)} required>{cores.map((core) => <option value={core.id} key={core.id}>{core.name}</option>)}</select></label>
+      <label>Strategy name<input key={editing?.id ?? 'new-name'} name="name" defaultValue={editing?.name ?? ''} minLength={3} maxLength={100} placeholder="e.g. London breakout" required /></label>
+      <div className="form-row"><label>Timeframe<input key={`${editing?.id ?? 'new'}-timeframe`} name="timeframe" defaultValue={editing?.timeframe ?? ''} placeholder="e.g. 15m" maxLength={32} /></label><label>Description <span>optional</span><input key={`${editing?.id ?? 'new'}-description`} name="description" defaultValue={editing?.description ?? ''} maxLength={1000} placeholder="What does this framework review?" /></label></div>
+      <div className="rule-editor"><div className="manager-heading"><div><p className="eyebrow">CONFLUENCE RULES</p><p className="form-hint">Add every condition that matters to this strategy.</p></div><button className="button-secondary button-small" onClick={() => setRules((current) => [...current, emptyRule()])} type="button">Add rule</button></div>{rules.map((rule, index) => <div className="rule-row" key={`${editing?.id ?? 'new'}-${index}`}><span className="rule-index">{String(index + 1).padStart(2, '0')}</span><label>Category<input value={rule.category} onChange={(event) => updateRule(index, { category: event.target.value })} placeholder="e.g. session" maxLength={48} required /></label><label>Condition<input value={rule.condition} onChange={(event) => updateRule(index, { condition: event.target.value })} placeholder="e.g. London open" maxLength={120} required /></label><label>Priority<input value={rule.priority} onChange={(event) => updateRule(index, { priority: Number(event.target.value) })} type="number" min="1" max="100" required /></label>{rules.length > 1 && <button className="remove-rule" onClick={() => setRules((current) => current.filter((_, ruleIndex) => ruleIndex !== index))} type="button" aria-label={`Remove rule ${index + 1}`}>×</button>}</div>)}</div>
+      <div className="form-actions"><button className="button" disabled={pending} type="submit">{pending ? 'Saving strategy…' : editing ? 'Save strategy' : 'Save draft strategy'}</button>{editing && <button className="button-secondary" onClick={resetForm} type="button">Cancel edit</button>}</div>
+    </form>
+    {strategies.length > 0 && <div className="core-list">{strategies.map((strategy) => <article key={strategy.id}><div><strong>{strategy.name}</strong><p>{strategy.timeframe || 'Timeframe not set'} · Attached to an Only1Core</p></div><div className="row-actions"><span className={`status-badge${strategy.status === 'draft' ? ' is-muted' : ''}`}>{strategy.status}</span><button className="button-quiet" disabled={updatingId === strategy.id} onClick={() => beginEdit(strategy)} type="button">Edit rules</button><button className="button-quiet" disabled={updatingId === strategy.id} onClick={() => toggleStatus(strategy)} type="button">{strategy.status === 'active' ? 'Set draft' : 'Mark active'}</button></div></article>)}</div>}
+    <p className={`form-status${message && (message.includes('Could not') || message.includes('Sign in') || message.includes('Add a')) ? ' is-error' : message ? ' is-success' : ''}`} role="status">{message}</p>
+  </section>;
 }

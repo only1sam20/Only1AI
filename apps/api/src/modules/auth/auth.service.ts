@@ -1,12 +1,14 @@
-import { ConflictException, ForbiddenException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { IsNull, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from '../users/entities/user.entity';
 import { AuthToken, AuthTokenType } from './entities/auth-token.entity';
 import { RefreshSession } from './entities/refresh-session.entity';
+import { AuthEmailService } from './auth-email.service';
+import { getAccessTokenTtl, getPasswordResetTokenTtlMilliseconds, getRefreshTokenTtl, getRefreshTokenTtlMilliseconds } from './token-ttl';
 
 export type AuthResult = { accessToken: string; refreshToken: string };
 
@@ -14,59 +16,96 @@ export type AuthResult = { accessToken: string; refreshToken: string };
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
   private readonly verificationTokenTtlMs = 24 * 60 * 60 * 1000;
-  private readonly refreshTokenTtlMs = 7 * 24 * 60 * 60 * 1000;
 
   constructor(
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(AuthToken) private readonly authTokens: Repository<AuthToken>,
     @InjectRepository(RefreshSession) private readonly sessions: Repository<RefreshSession>,
     private readonly jwt: JwtService,
+    private readonly authEmail: AuthEmailService,
   ) {}
 
   async register(email: string, password: string): Promise<void> {
     const normalizedEmail = email.trim().toLowerCase();
-    if (await this.users.exists({ where: { email: normalizedEmail } })) {
-      throw new ConflictException('Unable to create account with these details.');
+    const existingUser = await this.users.findOneBy({ email: normalizedEmail });
+    if (existingUser) {
+      if (existingUser.isActive && !existingUser.emailVerifiedAt) {
+        await this.createAndDeliverEmailVerification(existingUser);
+      }
+      return;
     }
-    const user = await this.users.save(this.users.create({
-      email: normalizedEmail,
-      passwordHash: await bcrypt.hash(password, 12),
-      emailVerifiedAt: null,
-    }));
-    const token = randomBytes(32).toString('hex');
-    await this.authTokens.save(this.authTokens.create({
-      userId: user.id,
-      type: AuthTokenType.EMAIL_VERIFICATION,
-      tokenHash: await bcrypt.hash(token, 12),
-      expiresAt: new Date(Date.now() + this.verificationTokenTtlMs),
-      usedAt: null,
-    }));
-    if (process.env.NODE_ENV === 'development') this.logger.debug(`Email verification token for ${user.id}: ${token}`);
+
+    let user: User;
+    try {
+      user = await this.users.save(this.users.create({
+        email: normalizedEmail,
+        passwordHash: await bcrypt.hash(password, 12),
+        emailVerifiedAt: null,
+      }));
+    } catch (error) {
+      // A concurrent registration must not make an email address observable.
+      if (!this.isUniqueViolation(error)) throw error;
+      const concurrentUser = await this.users.findOneBy({ email: normalizedEmail });
+      if (concurrentUser?.isActive && !concurrentUser.emailVerifiedAt) {
+        await this.createAndDeliverEmailVerification(concurrentUser);
+      }
+      return;
+    }
+
+    await this.createAndDeliverEmailVerification(user);
   }
 
   async verifyEmail(token: string): Promise<void> {
-    const candidates = await this.authTokens.find({ where: { type: AuthTokenType.EMAIL_VERIFICATION, usedAt: IsNull() } });
-    const record = await this.findMatchingToken(candidates, token);
+    const record = await this.findMatchingToken(AuthTokenType.EMAIL_VERIFICATION, token);
     if (!record || record.expiresAt <= new Date()) throw new UnauthorizedException('Invalid or expired verification token.');
     await this.users.update(record.userId, { emailVerifiedAt: new Date() });
     record.usedAt = new Date();
     await this.authTokens.save(record);
   }
 
+  async requestPasswordReset(email: string): Promise<void> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await this.users.findOneBy({ email: normalizedEmail });
+    if (!user || !user.isActive) return;
+    await this.createAndDeliverPasswordReset(user);
+  }
+
+  async resetPassword(token: string, password: string): Promise<void> {
+    const record = await this.findMatchingToken(AuthTokenType.PASSWORD_RESET, token);
+    if (!record || record.expiresAt <= new Date()) {
+      throw new UnauthorizedException('Invalid or expired password reset token.');
+    }
+
+    const user = await this.users.findOneBy({ id: record.userId, isActive: true });
+    if (!user) throw new UnauthorizedException('Invalid or expired password reset token.');
+
+    const resetAt = new Date();
+    const consumed = await this.authTokens.update({ id: record.id, usedAt: IsNull() }, { usedAt: resetAt });
+    if (consumed.affected !== 1) throw new UnauthorizedException('Invalid or expired password reset token.');
+
+    await this.users.update(user.id, { passwordHash: await bcrypt.hash(password, 12) });
+    await this.sessions.update({ userId: user.id, revokedAt: IsNull() }, { revokedAt: resetAt });
+  }
+
   async login(email: string, password: string): Promise<AuthResult> {
     const user = await this.users.createQueryBuilder('user').addSelect('user.passwordHash')
       .where('user.email = :email', { email: email.trim().toLowerCase() }).getOne();
-    if (!user || !(await bcrypt.compare(password, user.passwordHash))) throw new UnauthorizedException('Invalid email or password.');
-    if (!user.emailVerifiedAt) throw new ForbiddenException('Verify your email before signing in.');
+    if (!user || !user.isActive || !(await bcrypt.compare(password, user.passwordHash))) {
+      throw new UnauthorizedException('Invalid email or password.');
+    }
+    if (!user.emailVerifiedAt) throw new UnauthorizedException('Invalid email or password.');
     return this.createSession(user.id);
   }
 
-  async refresh(refreshToken: string): Promise<AuthResult> {
+  async refresh(refreshToken: string | undefined): Promise<AuthResult> {
+    if (!refreshToken) throw new UnauthorizedException('Session has expired.');
     const payload = await this.verifyRefreshToken(refreshToken);
     const session = await this.sessions.findOneBy({ id: payload.sid });
     if (!session || session.revokedAt || session.expiresAt <= new Date() || !(await bcrypt.compare(refreshToken, session.tokenHash))) {
       throw new UnauthorizedException('Session has expired.');
     }
+    const user = await this.users.findOneBy({ id: payload.sub, isActive: true });
+    if (!user) throw new UnauthorizedException('Session has expired.');
     session.revokedAt = new Date();
     await this.sessions.save(session);
     return this.createSession(payload.sub);
@@ -80,12 +119,51 @@ export class AuthService {
     } catch { /* Logout should remain idempotent. */ }
   }
 
+  getRefreshCookieMaxAge(): number {
+    return getRefreshTokenTtlMilliseconds();
+  }
+
+  private async createAndDeliverEmailVerification(user: Pick<User, 'id' | 'email'>): Promise<void> {
+    const token = await this.issueToken(user.id, AuthTokenType.EMAIL_VERIFICATION, this.verificationTokenTtlMs);
+    try {
+      await this.authEmail.sendEmailVerification(user.email, token);
+    } catch (error) {
+      // Do not disclose delivery success or failure from registration: doing so
+      // would let callers infer whether an address is already registered.
+      const details = error instanceof Error ? error.message : 'Unknown email provider error';
+      this.logger.error(`Verification email delivery failed for user ${user.id}: ${details}`);
+    }
+  }
+
+  private async createAndDeliverPasswordReset(user: Pick<User, 'id' | 'email'>): Promise<void> {
+    const requestedAt = new Date();
+    await this.authTokens.update(
+      { userId: user.id, type: AuthTokenType.PASSWORD_RESET, usedAt: IsNull() },
+      { usedAt: requestedAt },
+    );
+    const token = await this.issueToken(user.id, AuthTokenType.PASSWORD_RESET, getPasswordResetTokenTtlMilliseconds());
+    try {
+      await this.authEmail.sendPasswordReset(user.email, token);
+    } catch (error) {
+      // A reset request always returns the same generic response. This keeps
+      // account existence and provider availability out of the public API.
+      const details = error instanceof Error ? error.message : 'Unknown email provider error';
+      this.logger.error(`Password reset email delivery failed for user ${user.id}: ${details}`);
+    }
+  }
+
   private async createSession(userId: string): Promise<AuthResult> {
-    const session = await this.sessions.save(this.sessions.create({ userId, tokenHash: 'pending', expiresAt: new Date(Date.now() + this.refreshTokenTtlMs), revokedAt: null }));
-    const refreshToken = await this.jwt.signAsync({ sub: userId, sid: session.id, type: 'refresh' }, { expiresIn: '7d' });
+    const refreshTokenTtl = getRefreshTokenTtl();
+    const session = await this.sessions.save(this.sessions.create({
+      userId,
+      tokenHash: 'pending',
+      expiresAt: new Date(Date.now() + getRefreshTokenTtlMilliseconds()),
+      revokedAt: null,
+    }));
+    const refreshToken = await this.jwt.signAsync({ sub: userId, sid: session.id, type: 'refresh' }, { expiresIn: refreshTokenTtl });
     session.tokenHash = await bcrypt.hash(refreshToken, 12);
     await this.sessions.save(session);
-    const accessToken = await this.jwt.signAsync({ sub: userId, type: 'access' }, { expiresIn: '15m' });
+    const accessToken = await this.jwt.signAsync({ sub: userId, type: 'access' }, { expiresIn: getAccessTokenTtl() });
     return { accessToken, refreshToken };
   }
 
@@ -95,8 +173,36 @@ export class AuthService {
     return payload;
   }
 
-  private async findMatchingToken(records: AuthToken[], token: string): Promise<AuthToken | undefined> {
-    for (const record of records) if (await bcrypt.compare(token, record.tokenHash)) return record;
-    return undefined;
+  private async issueToken(userId: string, type: AuthTokenType, ttlMilliseconds: number): Promise<string> {
+    const selector = randomBytes(12).toString('hex');
+    const secret = randomBytes(32).toString('hex');
+    await this.authTokens.save(this.authTokens.create({
+      userId,
+      type,
+      selector,
+      tokenHash: this.tokenDigest(secret),
+      expiresAt: new Date(Date.now() + ttlMilliseconds),
+      usedAt: null,
+    }));
+    return `${selector}.${secret}`;
+  }
+
+  private async findMatchingToken(type: AuthTokenType, token: string): Promise<AuthToken | undefined> {
+    const [selector, secret, ...extraParts] = token.split('.');
+    if (!selector || !secret || extraParts.length || !/^[a-f0-9]{24}$/i.test(selector) || !/^[a-f0-9]{64}$/i.test(secret)) return undefined;
+    const record = await this.authTokens.findOneBy({ type, selector, usedAt: IsNull() });
+    if (!record) return undefined;
+    const expected = Buffer.from(record.tokenHash, 'hex');
+    const actual = Buffer.from(this.tokenDigest(secret), 'hex');
+    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return undefined;
+    return record;
+  }
+
+  private tokenDigest(secret: string): string {
+    return createHash('sha256').update(secret).digest('hex');
+  }
+
+  private isUniqueViolation(error: unknown): boolean {
+    return typeof error === 'object' && error !== null && 'code' in error && error.code === '23505';
   }
 }

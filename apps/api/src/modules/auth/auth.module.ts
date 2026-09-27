@@ -8,10 +8,11 @@ import { AuthService } from './auth.service';
 import { AuthToken } from './entities/auth-token.entity';
 import { RefreshSession } from './entities/refresh-session.entity';
 import { JwtAccessStrategy } from '../../common/jwt-access.strategy';
+import { AuthEmailService } from './auth-email.service';
 
 @Module({
   imports: [PassportModule, JwtModule.register({ secret: process.env.JWT_SECRET, signOptions: { issuer: 'only1ai' } }), TypeOrmModule.forFeature([User, AuthToken, RefreshSession])],
   controllers: [AuthController],
-  providers: [AuthService, JwtAccessStrategy],
+  providers: [AuthService, AuthEmailService, JwtAccessStrategy],
 })
 export class AuthModule {}

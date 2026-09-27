@@ -6,13 +6,16 @@ import { User } from '../users/entities/user.entity';
 import { Only1Core } from '../only1-core/entities/only1-core.entity';
 import { Strategy } from '../strategies/entities/strategy.entity';
 import { MarketMonitor } from '../market-scanner/entities/market-monitor.entity';
+import { Only1CoreStatus } from '../only1-core/entities/only1-core.entity';
+import { StrategyStatus } from '../strategies/entities/strategy.entity';
+import { MonitorStatus } from '../market-scanner/entities/market-monitor.entity';
 
 @Injectable()
 export class DashboardService {
   constructor(@InjectRepository(User) private readonly users: Repository<User>, @InjectRepository(UserProfile) private readonly profiles: Repository<UserProfile>, @InjectRepository(Only1Core) private readonly cores: Repository<Only1Core>, @InjectRepository(Strategy) private readonly strategies: Repository<Strategy>, @InjectRepository(MarketMonitor) private readonly monitors: Repository<MarketMonitor>) {}
 
   async missionControl(userId: string) {
-    const [user, profile, activeCores, activeStrategies, monitoredMarkets] = await Promise.all([this.users.findOneByOrFail({ id: userId }), this.profiles.findOneBy({ userId }), this.cores.countBy({ userId }), this.strategies.countBy({ userId }), this.monitors.countBy({ userId })]);
+    const [user, profile, activeCores, activeStrategies, monitoredMarkets] = await Promise.all([this.users.findOneByOrFail({ id: userId }), this.profiles.findOneBy({ userId }), this.cores.countBy({ userId, status: Only1CoreStatus.ACTIVE }), this.strategies.countBy({ userId, status: StrategyStatus.ACTIVE }), this.monitors.countBy({ userId, status: MonitorStatus.ACTIVE })]);
     return {
       greetingName: profile?.displayName ?? user.email.split('@')[0],
       onboarding: [

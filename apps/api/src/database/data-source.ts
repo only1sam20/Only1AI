@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { join } from 'path';
 import { DataSource } from 'typeorm';
 import { AuthToken } from '../modules/auth/entities/auth-token.entity';
 import { RefreshSession } from '../modules/auth/entities/refresh-session.entity';
@@ -22,5 +23,5 @@ export default new DataSource({
   password: process.env.DATABASE_PASSWORD,
   database: process.env.DATABASE_NAME ?? 'only1ai',
   entities: [User, UserProfile, AuthToken, RefreshSession, Only1Core, Strategy, StrategyRule, MarketMonitor, ConfluenceAssessment, Analysis, Notification, MarketplaceListing, AuditLog],
-  migrations: ['dist/database/migrations/*.js'],
+  migrations: [join(__dirname, 'migrations/*{.ts,.js}')],
 });

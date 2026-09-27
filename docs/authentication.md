@@ -8,6 +8,8 @@ Only1AI uses email/password authentication. Passwords are bcrypt-hashed; success
 | --- | --- | --- |
 | POST | `/api/v1/auth/register` | Register an unverified account |
 | POST | `/api/v1/auth/verify-email` | Verify a one-time email token |
+| POST | `/api/v1/auth/password-reset/request` | Request password-reset instructions |
+| POST | `/api/v1/auth/password-reset/confirm` | Set a new password with a one-time token |
 | POST | `/api/v1/auth/login` | Start a session |
 | POST | `/api/v1/auth/refresh` | Rotate the session refresh token |
 | POST | `/api/v1/auth/logout` | Revoke the current session |
@@ -27,6 +29,8 @@ Content-Type: application/json
 {"message":"If registration succeeds, check your email for verification instructions."}
 ```
 
-## Delivery dependency
+## Email delivery and recovery
 
-The token lifecycle is implemented now; sending email requires the future Notification System module and a configured transactional-email provider. In development, the token is only emitted through application logs when `NODE_ENV=development`.
+Verification and password-reset messages are sent directly through Resend when `RESEND_API_KEY` and `EMAIL_FROM` are configured. In non-production environments without those values, the API logs a one-time URL so local development remains usable. Production refuses the fallback and requires a verified Resend sending domain.
+
+Both registration and password-reset requests are deliberately non-enumerating: their public responses do not disclose whether an email address belongs to an account. Reset tokens are single-use, expire quickly, and revoke active sessions when consumed.

@@ -7,6 +7,7 @@ coverage/
 .env
 .env.local
 *.log
+*.tsbuildinfo
 __pycache__/
 .pytest_cache/
 .venv/

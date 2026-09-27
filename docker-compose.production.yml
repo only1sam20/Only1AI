@@ -10,6 +10,7 @@ services:
     ports: []
     restart: unless-stopped
     environment:
+      NODE_ENV: production
       WEB_ORIGIN: ${WEB_ORIGIN:?Set WEB_ORIGIN to the public HTTPS origin}
   ai:
     ports: []
