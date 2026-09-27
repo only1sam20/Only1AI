@@ -1,0 +1,31 @@
+.homeLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: max-content;
+  margin: -8px 0 2px;
+  color: var(--muted);
+  font-size: .79rem;
+  font-weight: 760;
+  line-height: 1;
+  text-decoration: none;
+  transition: color .2s ease, transform .2s ease;
+}
+
+.homeLink svg {
+  width: 17px;
+  height: 17px;
+  transition: transform .2s ease;
+}
+
+.homeLink:hover {
+  color: var(--text);
+}
+
+.homeLink:hover svg {
+  transform: translateX(-3px);
+}
+
+.homeLink:focus-visible {
+  border-radius: 6px;
+}

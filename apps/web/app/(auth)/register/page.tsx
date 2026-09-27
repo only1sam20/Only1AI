@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { Brand } from '../../../components/brand';
 import { PreferredStrategy, PreferredTrade, RegistrationInput, getStrategySuggestions, register } from '../../../lib/api';
+import styles from './register.module.css';
 
 const PASSWORD_MIN_LENGTH = 6;
 const PASSWORD_MAX_LENGTH = 128;
@@ -166,6 +167,12 @@ export default function RegisterPage() {
   return (
     <main className="auth-page">
       <form className="auth-card auth-card-register" onSubmit={submit} noValidate>
+        <Link className={styles.homeLink} href="/">
+          <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
+            <path d="M11.75 4.5 6.25 10l5.5 5.5M6.75 10h7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span>Back to home</span>
+        </Link>
         <Brand />
         <p className="eyebrow">CREATE YOUR WORKSPACE</p>
         <h1>Trade your way.</h1>
