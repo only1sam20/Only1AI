@@ -133,6 +133,8 @@ body::before { background: radial-gradient(circle, rgba(63, 151, 238, .08), tran
 .inline-form label, .auth-card label, .profile-form label { color: #dce9f6; }
 .inline-form input, .inline-form select, .inline-form textarea, .auth-card input, .profile-form input, .profile-form textarea,
 .auth-card select, .auth-card textarea { background: rgba(4, 10, 22, .62); }
+.inline-form select, .auth-card select { color-scheme: dark; }
+.inline-form select option, .auth-card select option { color: #edf5ff; background-color: #0b1324; }
 .inline-form input::placeholder, .inline-form textarea::placeholder, .auth-card input::placeholder, .profile-form input::placeholder { color: #70839b; }
 .inline-form input:focus, .inline-form select:focus, .inline-form textarea:focus, .auth-card input:focus, .profile-form input:focus, .profile-form textarea:focus,
 .auth-card select:focus, .auth-card textarea:focus { border-color: rgba(76, 170, 246, .78); background: rgba(76, 170, 246, .04); box-shadow: 0 0 0 4px rgba(76, 170, 246, .1); }
