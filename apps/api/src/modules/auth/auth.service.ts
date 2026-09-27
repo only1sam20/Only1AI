@@ -1,14 +1,18 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
-import { IsNull, Repository } from 'typeorm';
+import { DataSource, IsNull, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
+import { PreferredStrategy, UserProfile } from '../users/entities/user-profile.entity';
 import { User } from '../users/entities/user.entity';
 import { AuthToken, AuthTokenType } from './entities/auth-token.entity';
 import { RefreshSession } from './entities/refresh-session.entity';
 import { AuthEmailService } from './auth-email.service';
 import { getAccessTokenTtl, getPasswordResetTokenTtlMilliseconds, getRefreshTokenTtl, getRefreshTokenTtlMilliseconds } from './token-ttl';
+import { RegisterDto } from './dto/register.dto';
+import { hasStrongPassword, PASSWORD_POLICY_MESSAGE } from './password-policy';
+import { StrategySuggestion } from '../strategies/entities/strategy-suggestion.entity';
 
 export type AuthResult = { accessToken: string; refreshToken: string };
 
@@ -23,10 +27,13 @@ export class AuthService {
     @InjectRepository(RefreshSession) private readonly sessions: Repository<RefreshSession>,
     private readonly jwt: JwtService,
     private readonly authEmail: AuthEmailService,
+    private readonly dataSource: DataSource,
   ) {}
 
-  async register(email: string, password: string): Promise<void> {
-    const normalizedEmail = email.trim().toLowerCase();
+  async register(dto: RegisterDto): Promise<void> {
+    if (!hasStrongPassword(dto.password)) throw new BadRequestException(PASSWORD_POLICY_MESSAGE);
+
+    const normalizedEmail = dto.email.trim().toLowerCase();
     const existingUser = await this.users.findOneBy({ email: normalizedEmail });
     if (existingUser) {
       if (existingUser.isActive && !existingUser.emailVerifiedAt) {
@@ -37,11 +44,31 @@ export class AuthService {
 
     let user: User;
     try {
-      user = await this.users.save(this.users.create({
-        email: normalizedEmail,
-        passwordHash: await bcrypt.hash(password, 12),
-        emailVerifiedAt: null,
-      }));
+      const traderName = this.normalizeText(dto.traderName);
+      const customStrategy = this.getCustomStrategy(dto);
+      user = await this.dataSource.transaction(async (manager) => {
+        const createdUser = await manager.save(User, manager.create(User, {
+          email: normalizedEmail,
+          passwordHash: await bcrypt.hash(dto.password, 12),
+          emailVerifiedAt: null,
+        }));
+        await manager.save(UserProfile, manager.create(UserProfile, {
+          userId: createdUser.id,
+          displayName: traderName,
+          timezone: null,
+          bio: null,
+          preferredTrade: dto.preferredTrade,
+          preferredStrategy: dto.preferredStrategy,
+          customStrategy,
+        }));
+        if (customStrategy) {
+          await manager.getRepository(StrategySuggestion).upsert({
+            name: customStrategy,
+            normalizedName: this.normalizeSuggestion(customStrategy),
+          }, ['normalizedName']);
+        }
+        return createdUser;
+      });
     } catch (error) {
       // A concurrent registration must not make an email address observable.
       if (!this.isUniqueViolation(error)) throw error;
@@ -71,6 +98,7 @@ export class AuthService {
   }
 
   async resetPassword(token: string, password: string): Promise<void> {
+    if (!hasStrongPassword(password)) throw new BadRequestException(PASSWORD_POLICY_MESSAGE);
     const record = await this.findMatchingToken(AuthTokenType.PASSWORD_RESET, token);
     if (!record || record.expiresAt <= new Date()) {
       throw new UnauthorizedException('Invalid or expired password reset token.');
@@ -200,6 +228,23 @@ export class AuthService {
 
   private tokenDigest(secret: string): string {
     return createHash('sha256').update(secret).digest('hex');
+  }
+
+  private getCustomStrategy(dto: RegisterDto): string | null {
+    if (dto.preferredStrategy !== PreferredStrategy.CUSTOM) return null;
+    const customStrategy = typeof dto.customStrategy === 'string' ? this.normalizeText(dto.customStrategy) : '';
+    if (customStrategy.length < 3 || customStrategy.length > 160) {
+      throw new BadRequestException('A custom strategy must be between 3 and 160 characters.');
+    }
+    return customStrategy;
+  }
+
+  private normalizeText(value: string): string {
+    return value.trim().replace(/\s+/g, ' ');
+  }
+
+  private normalizeSuggestion(value: string): string {
+    return this.normalizeText(value).toLocaleLowerCase();
   }
 
   private isUniqueViolation(error: unknown): boolean {

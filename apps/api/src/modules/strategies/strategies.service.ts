@@ -6,6 +6,7 @@ import { CreateStrategyDto } from './dto/create-strategy.dto';
 import { UpdateStrategyDto } from './dto/update-strategy.dto';
 import { StrategyRule } from './entities/strategy-rule.entity';
 import { Strategy, StrategyStatus } from './entities/strategy.entity';
+import { StrategySuggestion } from './entities/strategy-suggestion.entity';
 
 @Injectable()
 export class StrategiesService {
@@ -14,9 +15,19 @@ export class StrategiesService {
     @InjectRepository(StrategyRule) private readonly rules: Repository<StrategyRule>,
     @InjectRepository(Only1Core) private readonly cores: Repository<Only1Core>,
     private readonly dataSource: DataSource,
+    @InjectRepository(StrategySuggestion) private readonly suggestions: Repository<StrategySuggestion>,
   ) {}
 
   async list(userId: string) { return this.strategies.find({ where: { userId }, order: { updatedAt: 'DESC' } }); }
+
+  async listSuggestions(): Promise<{ suggestions: string[] }> {
+    const suggestions = await this.suggestions.find({
+      select: { name: true },
+      order: { normalizedName: 'ASC' },
+      take: 100,
+    });
+    return { suggestions: suggestions.map((suggestion) => suggestion.name) };
+  }
 
   async get(userId: string, id: string) {
     const strategy = await this.strategies.findOneBy({ id, userId });

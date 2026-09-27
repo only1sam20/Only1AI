@@ -1,14 +1,24 @@
 import * as bcrypt from 'bcryptjs';
 import { createHash } from 'crypto';
 import { JwtService } from '@nestjs/jwt';
-import { Logger, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Logger, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
+import { RegisterDto } from './dto/register.dto';
+import { PreferredStrategy, PreferredTrade, UserProfile } from '../users/entities/user-profile.entity';
+import { User } from '../users/entities/user.entity';
+
+const validRegistration = (overrides: Partial<RegisterDto> = {}): RegisterDto => ({
+  email: 'trader@example.com',
+  password: 'Secure1!Pass',
+  traderName: 'Ada Trader',
+  preferredTrade: PreferredTrade.FOREX,
+  preferredStrategy: PreferredStrategy.SMC,
+  ...overrides,
+});
 
 describe('AuthService', () => {
   const users = {
     findOneBy: jest.fn(),
-    create: jest.fn((value) => value),
-    save: jest.fn(),
     createQueryBuilder: jest.fn(),
     update: jest.fn(),
   };
@@ -16,7 +26,18 @@ describe('AuthService', () => {
   const sessions = { create: jest.fn((value) => value), save: jest.fn(), findOneBy: jest.fn(), update: jest.fn() };
   const jwt = { signAsync: jest.fn(), verifyAsync: jest.fn() } as unknown as JwtService;
   const authEmail = { sendEmailVerification: jest.fn(), sendPasswordReset: jest.fn() };
-  const service = new AuthService(users as never, authTokens as never, sessions as never, jwt, authEmail as never);
+  const suggestions = { upsert: jest.fn() };
+  const transactionManager = {
+    create: jest.fn((_entity: unknown, value: Record<string, unknown>) => value),
+    save: jest.fn(async (entity: unknown, value: Record<string, unknown>) => entity === User
+      ? { ...value, id: 'user-1', isActive: true, emailVerifiedAt: null }
+      : value),
+    getRepository: jest.fn(() => suggestions),
+  };
+  const dataSource = {
+    transaction: jest.fn(async (work: (manager: typeof transactionManager) => Promise<unknown>) => work(transactionManager)),
+  };
+  const service = new AuthService(users as never, authTokens as never, sessions as never, jwt, authEmail as never, dataSource as never);
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -27,30 +48,67 @@ describe('AuthService', () => {
   it('accepts an existing verified registration without revealing or changing the account', async () => {
     users.findOneBy.mockResolvedValue({ id: 'user-1', email: 'trader@example.com', isActive: true, emailVerifiedAt: new Date() });
 
-    await expect(service.register('trader@example.com', 'a-long-secure-password')).resolves.toBeUndefined();
+    await expect(service.register(validRegistration())).resolves.toBeUndefined();
 
-    expect(users.save).not.toHaveBeenCalled();
+    expect(dataSource.transaction).not.toHaveBeenCalled();
     expect(authEmail.sendEmailVerification).not.toHaveBeenCalled();
   });
 
   it('reissues verification instructions for an existing unverified active account', async () => {
     users.findOneBy.mockResolvedValue({ id: 'user-1', email: 'trader@example.com', isActive: true, emailVerifiedAt: null });
 
-    await service.register('trader@example.com', 'a-long-secure-password');
+    await service.register(validRegistration());
 
     expect(authTokens.save).toHaveBeenCalledTimes(1);
     expect(authEmail.sendEmailVerification).toHaveBeenCalledWith('trader@example.com', expect.stringMatching(/^[a-f0-9]{24}\.[a-f0-9]{64}$/));
+    expect(dataSource.transaction).not.toHaveBeenCalled();
   });
 
   it('keeps registration non-enumerating when verification delivery fails', async () => {
     users.findOneBy.mockResolvedValue(undefined);
-    users.save.mockResolvedValue({ id: 'user-1', email: 'new@example.com', isActive: true, emailVerifiedAt: null });
     authEmail.sendEmailVerification.mockRejectedValue(new Error('Resend unavailable'));
 
     const logger = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-    await expect(service.register('new@example.com', 'a-long-secure-password')).resolves.toBeUndefined();
+    await expect(service.register(validRegistration({ email: 'new@example.com' }))).resolves.toBeUndefined();
     expect(logger).toHaveBeenCalledWith(expect.stringContaining('Verification email delivery failed'));
     logger.mockRestore();
+  });
+
+  it('persists onboarding preferences and an anonymous custom suggestion', async () => {
+    users.findOneBy.mockResolvedValue(undefined);
+
+    await service.register(validRegistration({
+      traderName: '  Ada   Trader  ',
+      preferredTrade: PreferredTrade.CRYPTO,
+      preferredStrategy: PreferredStrategy.CUSTOM,
+      customStrategy: '  Liquidity   Sweep  ',
+    }));
+
+    expect(transactionManager.save).toHaveBeenCalledWith(UserProfile, expect.objectContaining({
+      userId: 'user-1',
+      displayName: 'Ada Trader',
+      preferredTrade: PreferredTrade.CRYPTO,
+      preferredStrategy: PreferredStrategy.CUSTOM,
+      customStrategy: 'Liquidity Sweep',
+    }));
+    expect(suggestions.upsert).toHaveBeenCalledWith({
+      name: 'Liquidity Sweep',
+      normalizedName: 'liquidity sweep',
+    }, ['normalizedName']);
+  });
+
+  it('does not create onboarding records when an existing account registers again', async () => {
+    users.findOneBy.mockResolvedValue({ id: 'user-1', email: 'trader@example.com', isActive: true, emailVerifiedAt: new Date() });
+
+    await service.register(validRegistration({ preferredStrategy: PreferredStrategy.CUSTOM, customStrategy: 'Private strategy' }));
+
+    expect(dataSource.transaction).not.toHaveBeenCalled();
+    expect(suggestions.upsert).not.toHaveBeenCalled();
+  });
+
+  it('enforces the password policy even when the service is invoked directly', async () => {
+    await expect(service.register(validRegistration({ password: 'weakpass' }))).rejects.toBeInstanceOf(BadRequestException);
+    expect(users.findOneBy).not.toHaveBeenCalled();
   });
 
   it('accepts a password reset request for an unknown email without creating a token', async () => {
@@ -89,7 +147,7 @@ describe('AuthService', () => {
     users.findOneBy.mockResolvedValue({ id: 'user-1', isActive: true });
     authTokens.update.mockResolvedValue({ affected: 1 });
 
-    await service.resetPassword(rawToken, 'new-long-secure-password');
+    await service.resetPassword(rawToken, 'NewSecure1!Pass');
 
     expect(authTokens.update).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'reset-1' }),
@@ -115,12 +173,12 @@ describe('AuthService', () => {
     users.findOneBy.mockResolvedValue({ id: 'user-1', isActive: true });
     authTokens.update.mockResolvedValue({ affected: 0 });
 
-    await expect(service.resetPassword(rawToken, 'new-long-secure-password')).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(service.resetPassword(rawToken, 'NewSecure1!Pass')).rejects.toBeInstanceOf(UnauthorizedException);
     expect(users.update).not.toHaveBeenCalled();
   });
 
   it('rejects an inactive account at login', async () => {
-    const passwordHash = await bcrypt.hash('a-long-secure-password', 4);
+    const passwordHash = await bcrypt.hash('Secure1!Pass', 4);
     const getOne = jest.fn().mockResolvedValue({
       id: 'user-1',
       email: 'trader@example.com',
@@ -131,7 +189,7 @@ describe('AuthService', () => {
     const query = { addSelect: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), getOne };
     users.createQueryBuilder.mockReturnValue(query);
 
-    await expect(service.login('trader@example.com', 'a-long-secure-password')).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(service.login('trader@example.com', 'Secure1!Pass')).rejects.toBeInstanceOf(UnauthorizedException);
     expect(sessions.save).not.toHaveBeenCalled();
   });
 
@@ -158,7 +216,7 @@ describe('AuthService', () => {
   it('uses configured access and refresh TTL values for sessions and JWTs', async () => {
     process.env.JWT_ACCESS_TTL = '20m';
     process.env.JWT_REFRESH_TTL = '2h';
-    const passwordHash = await bcrypt.hash('a-long-secure-password', 4);
+    const passwordHash = await bcrypt.hash('Secure1!Pass', 4);
     const getOne = jest.fn().mockResolvedValue({
       id: 'user-1',
       email: 'trader@example.com',
@@ -171,7 +229,7 @@ describe('AuthService', () => {
     sessions.save.mockImplementation(async (value) => ({ ...value, id: value.id ?? 'session-1' }));
     (jwt.signAsync as jest.Mock).mockResolvedValueOnce('refresh-token').mockResolvedValueOnce('access-token');
 
-    await service.login('trader@example.com', 'a-long-secure-password');
+    await service.login('trader@example.com', 'Secure1!Pass');
 
     expect(jwt.signAsync).toHaveBeenNthCalledWith(1, expect.objectContaining({ type: 'refresh' }), { expiresIn: '2h' });
     expect(jwt.signAsync).toHaveBeenNthCalledWith(2, expect.objectContaining({ type: 'access' }), { expiresIn: '20m' });

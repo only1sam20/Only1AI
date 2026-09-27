@@ -16,6 +16,7 @@ import { Only1CoreModule } from './modules/only1-core/only1-core.module';
 import { Only1Core } from './modules/only1-core/entities/only1-core.entity';
 import { Strategy } from './modules/strategies/entities/strategy.entity';
 import { StrategyRule } from './modules/strategies/entities/strategy-rule.entity';
+import { StrategySuggestion } from './modules/strategies/entities/strategy-suggestion.entity';
 import { StrategiesModule } from './modules/strategies/strategies.module';
 import { MarketMonitor } from './modules/market-scanner/entities/market-monitor.entity';
 import { MarketScannerModule } from './modules/market-scanner/market-scanner.module';
@@ -38,7 +39,7 @@ import { HealthController } from './health.controller';
     TypeOrmModule.forRoot({
       type: 'postgres', host: process.env.DATABASE_HOST ?? 'localhost', port: Number(process.env.DATABASE_PORT ?? 5432),
       username: process.env.DATABASE_USER ?? 'only1ai', password: process.env.DATABASE_PASSWORD,
-      database: process.env.DATABASE_NAME ?? 'only1ai', entities: [User, UserProfile, AuthToken, RefreshSession, Only1Core, Strategy, StrategyRule, MarketMonitor, ConfluenceAssessment, Analysis, Notification, MarketplaceListing, AuditLog], synchronize: false,
+      database: process.env.DATABASE_NAME ?? 'only1ai', entities: [User, UserProfile, AuthToken, RefreshSession, Only1Core, Strategy, StrategyRule, StrategySuggestion, MarketMonitor, ConfluenceAssessment, Analysis, Notification, MarketplaceListing, AuditLog], synchronize: false,
     }),
     AuthModule,
     UsersModule,

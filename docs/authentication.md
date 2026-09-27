@@ -6,7 +6,7 @@ Only1AI uses email/password authentication. Passwords are bcrypt-hashed; success
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
-| POST | `/api/v1/auth/register` | Register an unverified account |
+| POST | `/api/v1/auth/register` | Register an unverified account and trader preferences |
 | POST | `/api/v1/auth/verify-email` | Verify a one-time email token |
 | POST | `/api/v1/auth/password-reset/request` | Request password-reset instructions |
 | POST | `/api/v1/auth/password-reset/confirm` | Set a new password with a one-time token |
@@ -22,12 +22,16 @@ All requests are validated and rate limited. Responses deliberately avoid reveal
 POST /api/v1/auth/register
 Content-Type: application/json
 
-{"email":"trader@example.com","password":"a-long-unique-password"}
+{"email":"trader@example.com","password":"Secure1!Password","traderName":"Ada Trader","preferredTrade":"forex","preferredStrategy":"smc"}
 ```
 
 ```json
 {"message":"If registration succeeds, check your email for verification instructions."}
 ```
+
+Passwords must be 6-128 characters and include an uppercase letter, lowercase letter, number, and special character. Registration also requires a trader name, one preferred market (`crypto`, `forex`, `indices`, or `all`), and one preferred methodology (`smc`, `ict`, `algo`, `msnr`, `price_action`, or `custom`). A custom methodology is stored privately on the profile and anonymously added to the community suggestion list.
+
+`GET /api/v1/strategies/suggestions` returns those distinct anonymous custom-strategy suggestions for the registration experience.
 
 ## Email delivery and recovery
 

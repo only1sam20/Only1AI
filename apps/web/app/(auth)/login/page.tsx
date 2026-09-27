@@ -9,6 +9,7 @@ import { login } from '../../../lib/api';
 export default function LoginPage() {
   const [message, setMessage] = useState('');
   const [pending, setPending] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -30,5 +31,27 @@ export default function LoginPage() {
     }
   }
 
-  return <main className="auth-page"><form className="auth-card" onSubmit={submit} noValidate><Brand /><p className="eyebrow">WELCOME BACK</p><h1>Continue your process.</h1><p className="auth-copy">Pick up your research workspace and review your framework with clarity.</p><label>Email address<input name="email" type="email" autoComplete="email" placeholder="you@example.com" required /></label><label>Password<input name="password" type="password" autoComplete="current-password" placeholder="Your password" required /></label><Link className="text-link" href="/forgot-password">Forgot password?</Link><button className="button" disabled={pending} type="submit">{pending ? 'Signing in…' : 'Sign in'}</button><p className={`form-status${message ? ' is-error' : ''}`} role="status">{message}</p><Link href="/register">Need an account? Create one</Link></form></main>;
+  return (
+    <main className="auth-page">
+      <form className="auth-card" onSubmit={submit} noValidate>
+        <Brand />
+        <p className="eyebrow">WELCOME BACK</p>
+        <h1>Continue your process.</h1>
+        <p className="auth-copy">Pick up your research workspace and review your framework with clarity.</p>
+        <label htmlFor="login-email">Email address
+          <input id="login-email" name="email" type="email" autoComplete="email" maxLength={254} placeholder="you@example.com" required />
+        </label>
+        <label htmlFor="login-password">Password
+          <span className="password-input-wrap">
+            <input id="login-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" maxLength={128} placeholder="Your password" required />
+            <button className="password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? 'Hide' : 'Show'}</button>
+          </span>
+        </label>
+        <Link className="text-link" href="/forgot-password">Forgot password?</Link>
+        <button className="button" disabled={pending} type="submit">{pending ? 'Signing in...' : 'Sign in'}</button>
+        <p className={`form-status${message ? ' is-error' : ''}`} role="status">{message}</p>
+        <Link href="/register">Need an account? Create one</Link>
+      </form>
+    </main>
+  );
 }

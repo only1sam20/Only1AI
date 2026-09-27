@@ -17,12 +17,28 @@ export class UsersService {
 
   async updateProfile(userId: string, changes: UpdateProfileDto) {
     let profile = await this.profiles.findOneBy({ userId });
-    if (!profile) profile = this.profiles.create({ userId, displayName: null, timezone: null, bio: null });
+    if (!profile) profile = this.profiles.create({
+      userId,
+      displayName: null,
+      timezone: null,
+      bio: null,
+      preferredTrade: null,
+      preferredStrategy: null,
+      customStrategy: null,
+    });
     Object.assign(profile, changes);
     return this.serializeProfile(await this.profiles.save(profile));
   }
 
   private serializeProfile(profile: UserProfile) {
-    return { displayName: profile.displayName, timezone: profile.timezone, bio: profile.bio, updatedAt: profile.updatedAt };
+    return {
+      displayName: profile.displayName,
+      timezone: profile.timezone,
+      bio: profile.bio,
+      preferredTrade: profile.preferredTrade,
+      preferredStrategy: profile.preferredStrategy,
+      customStrategy: profile.customStrategy,
+      updatedAt: profile.updatedAt,
+    };
   }
 }

@@ -4,7 +4,7 @@ Only1AI is a trader decision-support workspace. It helps users organise a person
 
 ## What works in this milestone
 
-- Account registration, email verification, login, rotating sessions, and recovery flows
+- Trader-tailored registration (market and methodology preferences), strong-password guidance, email verification, login, rotating sessions, and recovery flows
 - Personal profiles, Only1Cores, strategies with editable confluence rules, and market-monitor configuration
 - Manual confluence reviews and saved evidence-backed analyses
 - Mission Control onboarding, notifications inbox, marketplace browsing, accessible responsive navigation, and reduced-motion support

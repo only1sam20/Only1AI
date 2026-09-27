@@ -21,7 +21,7 @@ export class AuthController {
   @HttpCode(202)
   @ApiOkResponse({ description: 'Registration accepted. Verify the email address to continue.' })
   async register(@Body() dto: RegisterDto): Promise<{ message: string }> {
-    await this.auth.register(dto.email, dto.password);
+    await this.auth.register(dto);
     return { message: 'If registration succeeds, check your email for verification instructions.' };
   }
 

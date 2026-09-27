@@ -8,6 +8,7 @@ import { UserProfile } from '../modules/users/entities/user-profile.entity';
 import { Only1Core } from '../modules/only1-core/entities/only1-core.entity';
 import { Strategy } from '../modules/strategies/entities/strategy.entity';
 import { StrategyRule } from '../modules/strategies/entities/strategy-rule.entity';
+import { StrategySuggestion } from '../modules/strategies/entities/strategy-suggestion.entity';
 import { MarketMonitor } from '../modules/market-scanner/entities/market-monitor.entity';
 import { ConfluenceAssessment } from '../modules/confluence/entities/confluence-assessment.entity';
 import { Analysis } from '../modules/analysis/entities/analysis.entity';
@@ -22,6 +23,6 @@ export default new DataSource({
   username: process.env.DATABASE_USER ?? 'only1ai',
   password: process.env.DATABASE_PASSWORD,
   database: process.env.DATABASE_NAME ?? 'only1ai',
-  entities: [User, UserProfile, AuthToken, RefreshSession, Only1Core, Strategy, StrategyRule, MarketMonitor, ConfluenceAssessment, Analysis, Notification, MarketplaceListing, AuditLog],
+  entities: [User, UserProfile, AuthToken, RefreshSession, Only1Core, Strategy, StrategyRule, StrategySuggestion, MarketMonitor, ConfluenceAssessment, Analysis, Notification, MarketplaceListing, AuditLog],
   migrations: [join(__dirname, 'migrations/*{.ts,.js}')],
 });

@@ -39,8 +39,24 @@ export async function login(email: string, password: string): Promise<void> {
   accessToken = (await response.json() as { accessToken: string }).accessToken;
 }
 
-export async function register(email: string, password: string): Promise<{ message: string }> {
-  return api<{ message: string }>('/auth/register', { method: 'POST', body: JSON.stringify({ email, password }) }, false);
+export type PreferredTrade = 'crypto' | 'forex' | 'indices' | 'all';
+export type PreferredStrategy = 'smc' | 'ict' | 'algo' | 'msnr' | 'price_action' | 'custom';
+export type RegistrationInput = {
+  email: string;
+  password: string;
+  traderName: string;
+  preferredTrade: PreferredTrade;
+  preferredStrategy: PreferredStrategy;
+  customStrategy?: string;
+};
+
+export async function register(input: RegistrationInput): Promise<{ message: string }> {
+  return api<{ message: string }>('/auth/register', { method: 'POST', body: JSON.stringify(input) }, false);
+}
+
+export async function getStrategySuggestions(): Promise<string[]> {
+  const result = await api<{ suggestions: string[] }>('/strategies/suggestions', {}, false);
+  return result.suggestions;
 }
 
 export async function verifyEmail(token: string): Promise<void> {

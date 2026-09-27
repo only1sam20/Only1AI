@@ -1,5 +1,21 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
+export enum PreferredTrade {
+  CRYPTO = 'crypto',
+  FOREX = 'forex',
+  INDICES = 'indices',
+  ALL = 'all',
+}
+
+export enum PreferredStrategy {
+  SMC = 'smc',
+  ICT = 'ict',
+  ALGO = 'algo',
+  MSNR = 'msnr',
+  PRICE_ACTION = 'price_action',
+  CUSTOM = 'custom',
+}
+
 @Entity({ name: 'user_profiles' })
 export class UserProfile {
   @PrimaryGeneratedColumn('uuid')
@@ -17,6 +33,15 @@ export class UserProfile {
 
   @Column({ type: 'text', nullable: true })
   bio!: string | null;
+
+  @Column({ name: 'preferred_trade', type: 'enum', enum: PreferredTrade, nullable: true })
+  preferredTrade!: PreferredTrade | null;
+
+  @Column({ name: 'preferred_strategy', type: 'enum', enum: PreferredStrategy, nullable: true })
+  preferredStrategy!: PreferredStrategy | null;
+
+  @Column({ name: 'custom_strategy', length: 160, nullable: true })
+  customStrategy!: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
