@@ -1,1 +1,19 @@
-{ "compilerOptions": { "module": "commonjs", "declaration": true, "removeComments": true, "emitDecoratorMetadata": true, "experimentalDecorators": true, "allowSyntheticDefaultImports": true, "target": "ES2022", "sourceMap": true, "outDir": "./dist", "baseUrl": "./", "incremental": true, "strict": true, "noImplicitAny": true, "skipLibCheck": true }, "include": ["src/**/*.ts", "test/**/*.ts"] }
+{
+  "$schema": "https://raw.githubusercontent.com/SchemaStore/schemastore/master/src/schemas/json/tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2022",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "incremental": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

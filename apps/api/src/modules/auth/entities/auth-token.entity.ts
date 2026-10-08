@@ -15,7 +15,7 @@ export class AuthToken {
   @Column({ type: 'enum', enum: AuthTokenType })
   type!: AuthTokenType;
   @Index()
-  @Column({ length: 24, nullable: true })
+  @Column({ type: 'varchar', length: 24, nullable: true })
   selector!: string | null;
   @Column({ name: 'token_hash' })
   tokenHash!: string;

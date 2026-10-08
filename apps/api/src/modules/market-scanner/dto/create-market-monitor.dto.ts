@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsUUID, MaxLength, ValidateIf } from 'class-validator';
 import { MarketType, MonitorStatus } from '../entities/market-monitor.entity';
 
 export class CreateMarketMonitorDto {
@@ -7,5 +7,5 @@ export class CreateMarketMonitorDto {
   @IsString() @MaxLength(32) symbol!: string;
   @IsEnum(MarketType) marketType!: MarketType;
   @IsString() @MaxLength(32) timeframe!: string;
-  @IsOptional() @IsEnum(MonitorStatus) status?: MonitorStatus;
+  @ValidateIf((_object, value) => value !== undefined) @IsEnum(MonitorStatus) status?: MonitorStatus;
 }

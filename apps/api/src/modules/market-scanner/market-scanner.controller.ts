@@ -14,5 +14,5 @@ export class MarketScannerController {
   @Get(':id/candles') candles(@Req() request: Request & { user: AuthenticatedUser }, @Param('id', new ParseUUIDPipe()) id: string) { return this.scanner.candles(request.user.id, id); }
   @Get('snapshot/:symbol') snapshot(@Param('symbol') symbol: string) { return this.scanner.snapshot(symbol); }
   @Post() create(@Req() request: Request & { user: AuthenticatedUser }, @Body() dto: CreateMarketMonitorDto) { return this.scanner.create(request.user.id, dto); }
-  @Patch(':id') update(@Req() request: Request & { user: AuthenticatedUser }, @Param('id') id: string, @Body() dto: UpdateMarketMonitorDto) { return this.scanner.update(request.user.id, id, dto); }
+  @Patch(':id') update(@Req() request: Request & { user: AuthenticatedUser }, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateMarketMonitorDto) { return this.scanner.update(request.user.id, id, dto); }
 }

@@ -25,7 +25,7 @@ export class Only1CoreService {
     const core = await this.getForUser(userId, coreId);
     Object.assign(core, dto);
     if (dto.name) core.name = dto.name.trim();
-    if (dto.description !== undefined) core.description = dto.description.trim() || null;
+    if (dto.description !== undefined) core.description = dto.description?.trim() || null;
     return this.cores.save(core);
   }
 }

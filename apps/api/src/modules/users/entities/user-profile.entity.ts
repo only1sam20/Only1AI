@@ -25,10 +25,10 @@ export class UserProfile {
   @Column({ name: 'user_id', type: 'uuid' })
   userId!: string;
 
-  @Column({ name: 'display_name', length: 80, nullable: true })
+  @Column({ name: 'display_name', type: 'varchar', length: 80, nullable: true })
   displayName!: string | null;
 
-  @Column({ length: 64, nullable: true })
+  @Column({ type: 'varchar', length: 64, nullable: true })
   timezone!: string | null;
 
   @Column({ type: 'text', nullable: true })
@@ -40,7 +40,7 @@ export class UserProfile {
   @Column({ name: 'preferred_strategy', type: 'enum', enum: PreferredStrategy, nullable: true })
   preferredStrategy!: PreferredStrategy | null;
 
-  @Column({ name: 'custom_strategy', length: 160, nullable: true })
+  @Column({ name: 'custom_strategy', type: 'varchar', length: 160, nullable: true })
   customStrategy!: string | null;
 
   @CreateDateColumn({ name: 'created_at' })

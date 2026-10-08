@@ -36,6 +36,46 @@ jobs:
         run: npm run build --workspace=@only1ai/api
       - name: Build web
         run: npm run build --workspace=@only1ai/web
+  validate-database:
+    name: PostgreSQL migration and HTTP smoke checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: only1ai_ci
+          POSTGRES_USER: only1ai
+          POSTGRES_PASSWORD: only1ai-ci-ephemeral-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U only1ai -d only1ai_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_HOST: localhost
+      DATABASE_PORT: 5432
+      DATABASE_NAME: only1ai_ci
+      DATABASE_USER: only1ai
+      DATABASE_PASSWORD: only1ai-ci-ephemeral-password
+      JWT_SECRET: only1ai-ci-test-secret-not-for-production-use-0123456789abcdef
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Apply migrations on a fresh database
+        run: npm run migration:run --workspace=@only1ai/api
+      - name: Check real PostgreSQL and HTTP workflows
+        run: npm run test:database --workspace=@only1ai/api
   validate-ai:
     name: Test AI service (mocked providers)
     runs-on: ubuntu-latest

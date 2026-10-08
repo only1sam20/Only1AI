@@ -1,6 +1,7 @@
+import './config/environment.bootstrap';
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './modules/auth/auth.module';
@@ -31,15 +32,19 @@ import { MarketplaceModule } from './modules/marketplace/marketplace.module';
 import { AuditLog } from './modules/administration/entities/audit-log.entity';
 import { AdministrationModule } from './modules/administration/administration.module';
 import { HealthController } from './health.controller';
+import { postgresConnectionOptions } from './config/environment';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
-    TypeOrmModule.forRoot({
-      type: 'postgres', host: process.env.DATABASE_HOST ?? 'localhost', port: Number(process.env.DATABASE_PORT ?? 5432),
-      username: process.env.DATABASE_USER ?? 'only1ai', password: process.env.DATABASE_PASSWORD,
-      database: process.env.DATABASE_NAME ?? 'only1ai', entities: [User, UserProfile, AuthToken, RefreshSession, Only1Core, Strategy, StrategyRule, StrategySuggestion, MarketMonitor, ConfluenceAssessment, Analysis, Notification, MarketplaceListing, AuditLog], synchronize: false,
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        ...postgresConnectionOptions((name) => config.get<string>(name)),
+        entities: [User, UserProfile, AuthToken, RefreshSession, Only1Core, Strategy, StrategyRule, StrategySuggestion, MarketMonitor, ConfluenceAssessment, Analysis, Notification, MarketplaceListing, AuditLog],
+      }),
     }),
     AuthModule,
     UsersModule,

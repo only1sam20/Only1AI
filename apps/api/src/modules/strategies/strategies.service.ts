@@ -51,11 +51,11 @@ export class StrategiesService {
     const current = await this.get(userId, id);
     return this.dataSource.transaction(async (manager) => {
       const strategy = manager.merge(Strategy, current, {
-        ...dto, name: dto.name?.trim(), description: dto.description === undefined ? current.description : dto.description.trim() || null,
-        timeframe: dto.timeframe === undefined ? current.timeframe : dto.timeframe.trim() || null,
+        ...dto, name: dto.name?.trim(), description: dto.description === undefined ? current.description : dto.description?.trim() || null,
+        timeframe: dto.timeframe === undefined ? current.timeframe : dto.timeframe?.trim() || null,
       });
       const saved = await manager.save(Strategy, strategy);
-      if (dto.rules === undefined) return current;
+      if (dto.rules === undefined) return { ...saved, rules: current.rules };
       await manager.delete(StrategyRule, { strategyId: id });
       const rules = dto.rules.length ? await manager.save(StrategyRule, dto.rules.map((rule) => manager.create(StrategyRule, { strategyId: id, category: rule.category.trim(), condition: rule.condition.trim(), value: rule.value ?? null, priority: rule.priority ?? 50 }))) : [];
       return { ...saved, rules };

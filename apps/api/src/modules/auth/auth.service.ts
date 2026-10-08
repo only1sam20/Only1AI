@@ -85,9 +85,10 @@ export class AuthService {
   async verifyEmail(token: string): Promise<void> {
     const record = await this.findMatchingToken(AuthTokenType.EMAIL_VERIFICATION, token);
     if (!record || record.expiresAt <= new Date()) throw new UnauthorizedException('Invalid or expired verification token.');
-    await this.users.update(record.userId, { emailVerifiedAt: new Date() });
-    record.usedAt = new Date();
-    await this.authTokens.save(record);
+    const verifiedAt = new Date();
+    const consumed = await this.authTokens.update({ id: record.id, usedAt: IsNull() }, { usedAt: verifiedAt });
+    if (consumed.affected !== 1) throw new UnauthorizedException('Invalid or expired verification token.');
+    await this.users.update(record.userId, { emailVerifiedAt: verifiedAt });
   }
 
   async requestPasswordReset(email: string): Promise<void> {
@@ -129,13 +130,13 @@ export class AuthService {
     if (!refreshToken) throw new UnauthorizedException('Session has expired.');
     const payload = await this.verifyRefreshToken(refreshToken);
     const session = await this.sessions.findOneBy({ id: payload.sid });
-    if (!session || session.revokedAt || session.expiresAt <= new Date() || !(await bcrypt.compare(refreshToken, session.tokenHash))) {
+    if (!session || session.userId !== payload.sub || session.revokedAt || session.expiresAt <= new Date() || !(await bcrypt.compare(refreshToken, session.tokenHash))) {
       throw new UnauthorizedException('Session has expired.');
     }
     const user = await this.users.findOneBy({ id: payload.sub, isActive: true });
     if (!user) throw new UnauthorizedException('Session has expired.');
-    session.revokedAt = new Date();
-    await this.sessions.save(session);
+    const consumed = await this.sessions.update({ id: session.id, revokedAt: IsNull() }, { revokedAt: new Date() });
+    if (consumed.affected !== 1) throw new UnauthorizedException('Session has expired.');
     return this.createSession(payload.sub);
   }
 
@@ -196,9 +197,15 @@ export class AuthService {
   }
 
   private async verifyRefreshToken(token: string): Promise<{ sub: string; sid: string; type: string }> {
-    const payload = await this.jwt.verifyAsync<{ sub: string; sid: string; type: string }>(token);
-    if (payload.type !== 'refresh' || !payload.sub || !payload.sid) throw new UnauthorizedException('Invalid session.');
-    return payload;
+    try {
+      const payload = await this.jwt.verifyAsync<{ sub: string; sid: string; type: string }>(token, { issuer: 'only1ai' });
+      if (payload.type !== 'refresh' || typeof payload.sub !== 'string' || !payload.sub || typeof payload.sid !== 'string' || !payload.sid) {
+        throw new UnauthorizedException('Session has expired.');
+      }
+      return payload;
+    } catch {
+      throw new UnauthorizedException('Session has expired.');
+    }
   }
 
   private async issueToken(userId: string, type: AuthTokenType, ttlMilliseconds: number): Promise<string> {

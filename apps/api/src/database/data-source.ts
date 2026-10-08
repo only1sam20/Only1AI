@@ -15,14 +15,12 @@ import { Analysis } from '../modules/analysis/entities/analysis.entity';
 import { Notification } from '../modules/notifications/entities/notification.entity';
 import { MarketplaceListing } from '../modules/marketplace/entities/marketplace-listing.entity';
 import { AuditLog } from '../modules/administration/entities/audit-log.entity';
+import { loadApiEnvironment, postgresConnectionOptions } from '../config/environment';
+
+loadApiEnvironment();
 
 export default new DataSource({
-  type: 'postgres',
-  host: process.env.DATABASE_HOST ?? 'localhost',
-  port: Number(process.env.DATABASE_PORT ?? 5432),
-  username: process.env.DATABASE_USER ?? 'only1ai',
-  password: process.env.DATABASE_PASSWORD,
-  database: process.env.DATABASE_NAME ?? 'only1ai',
+  ...postgresConnectionOptions((name) => process.env[name]),
   entities: [User, UserProfile, AuthToken, RefreshSession, Only1Core, Strategy, StrategyRule, StrategySuggestion, MarketMonitor, ConfluenceAssessment, Analysis, Notification, MarketplaceListing, AuditLog],
   migrations: [join(__dirname, 'migrations/*{.ts,.js}')],
 });

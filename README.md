@@ -19,9 +19,11 @@ Phase 3 has started. This milestone adds on-demand historical candles and AI exp
 Requirements: Node.js 22+, npm 11+, PostgreSQL 17+, and Python 3.12+ for the AI service. Docker Desktop is optional but is the quickest way to start PostgreSQL and Redis when hardware virtualisation is available.
 
 ```powershell
-Copy-Item .env.example .env
+if (-not (Test-Path -LiteralPath .env)) { Copy-Item .env.example .env }
 npm install --legacy-peer-deps
 ```
+
+Run these commands from the repository root. The copy creates `.env` only when it does not already exist; never overwrite configured credentials. The API and migration CLI automatically load this root `.env`, even though npm runs the API from `apps/api`. Existing terminal/Docker environment variables take precedence over `.env` values.
 
 Start PostgreSQL and Redis with Docker when available:
 
@@ -29,7 +31,22 @@ Start PostgreSQL and Redis with Docker when available:
 docker compose up -d postgres redis
 ```
 
-Or run PostgreSQL locally and set the `DATABASE_*` values in `.env`.
+Or run PostgreSQL locally, create a database named `only1ai` if it does not already exist, and set the `DATABASE_*` values in the root `.env`. For a local installation using the `postgres` login, update the existing lines:
+
+```dotenv
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_NAME=only1ai
+DATABASE_USER=postgres
+DATABASE_PASSWORD='YOUR_ACTUAL_POSTGRESQL_PASSWORD'
+NODE_ENV=development
+```
+
+`DATABASE_NAME` is the database, while `DATABASE_USER` is the PostgreSQL login. The `POSTGRES_*` example values configure Docker's database container, not the API connection. Keep credentials private and do not paste `.env` contents into screenshots. Configure a random `JWT_SECRET`; the API refuses to start without one. On Windows, generate it directly into the clipboard, then paste after the existing `JWT_SECRET=` line and save:
+
+```powershell
+node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('hex'))" | Set-Clipboard
+```
 
 Run database migrations, the API, and the web app in separate terminals:
 
@@ -40,6 +57,8 @@ npm run dev:web
 ```
 
 Open `http://localhost:3000`.
+
+The API health endpoint is `http://localhost:3001/api/v1/health`. Wait for migrations to complete before starting the API. If authentication fails, recheck the saved `DATABASE_USER` and password; do not recreate or delete the database. Restart the API after changing `.env`.
 
 ### Enable Phase 3 integrations (without Docker)
 
@@ -70,6 +89,14 @@ npm run build --workspace=@only1ai/api
 npm run build --workspace=@only1ai/web
 .\services\ai\.venv\Scripts\python.exe -m pytest services/ai/tests -q
 ```
+
+After migrations, a separate real PostgreSQL/HTTP smoke test can verify startup, registration, login, ownership, strategy edits, saved confluence, and session rotation against your configured local database:
+
+```powershell
+npm run test:database --workspace=@only1ai/api
+```
+
+This check creates uniquely named temporary fixture accounts and removes only those accounts and their cascaded records afterward. Email delivery is mocked, and it makes no paid provider calls. Existing user accounts and records are not targeted. It requires the same `DATABASE_*` settings and `JWT_SECRET` as normal API startup.
 
 ## Repository layout
 
