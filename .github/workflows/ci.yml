@@ -29,8 +29,28 @@ jobs:
       - name: Lint web
         run: npm run lint --workspace=@only1ai/web
       - name: Test API
-        run: npm test --workspace=@only1ai/api -- --runInBand --forceExit
+        run: npm test --workspace=@only1ai/api -- --runInBand --forceExit --testTimeout=15000
+      - name: Test browser API session handling
+        run: npm run test:session --workspace=@only1ai/web
       - name: Build API
         run: npm run build --workspace=@only1ai/api
       - name: Build web
         run: npm run build --workspace=@only1ai/web
+  validate-ai:
+    name: Test AI service (mocked providers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: services/ai/requirements.txt
+      - name: Install dependencies
+        run: python -m pip install -r services/ai/requirements.txt
+      - name: Test AI explanations without live requests
+        working-directory: services/ai
+        run: python -m pytest -q

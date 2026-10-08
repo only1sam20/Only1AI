@@ -21,7 +21,10 @@ export class ConfluenceService {
     const matched = rules.filter((rule) => observed.has(`${rule.category.toLowerCase()}::${rule.condition.toLowerCase()}`));
     const total = rules.reduce((sum, rule) => sum + rule.priority, 0);
     const score = total ? Math.round((matched.reduce((sum, rule) => sum + rule.priority, 0) / total) * 100) : 0;
-    return this.assessments.save(this.assessments.create({ userId, only1CoreId: strategy.only1CoreId, strategyId: strategy.id, monitorId: dto.monitorId ?? null, score, matchedRuleIds: matched.map((rule) => rule.id), observations: dto.observations as unknown as Record<string, unknown>[], outcome: score >= 70 ? ConfluenceOutcome.QUALIFIED : ConfluenceOutcome.INSUFFICIENT }));
+    const matchedIds = new Set(matched.map((rule) => rule.id));
+    const ruleSnapshot = rules.map((rule) => ({ id: rule.id, category: rule.category, condition: rule.condition, priority: rule.priority, matched: matchedIds.has(rule.id) }));
+    const strategySnapshot = { name: strategy.name, timeframe: strategy.timeframe?.trim() || null };
+    return this.assessments.save(this.assessments.create({ userId, only1CoreId: strategy.only1CoreId, strategyId: strategy.id, monitorId: dto.monitorId ?? null, score, matchedRuleIds: [...matchedIds], ruleSnapshot, strategySnapshot, observations: dto.observations as unknown as Record<string, unknown>[], outcome: score >= 70 ? ConfluenceOutcome.QUALIFIED : ConfluenceOutcome.INSUFFICIENT }));
   }
   list(userId: string) { return this.assessments.find({ where: { userId }, order: { createdAt: 'DESC' }, take: 50 }); }
 }

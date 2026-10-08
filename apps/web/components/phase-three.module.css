@@ -1,0 +1,288 @@
+.chartPanel {
+  min-width: 0;
+}
+
+.providerState {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: .8rem;
+  line-height: 1.5;
+}
+
+.providerState::before {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dim);
+  content: '';
+}
+
+.providerReady::before {
+  background: var(--teal);
+}
+
+.chartControls {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.watchlistActions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex-shrink: 1;
+  max-width: 100%;
+}
+
+.controlLabel {
+  display: grid;
+  flex: 1 1 260px;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text);
+  font-size: .79rem;
+  font-weight: 760;
+}
+
+.controlLabel select {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  color: var(--text);
+  background: #081222;
+  color-scheme: dark;
+}
+
+.controlLabel option {
+  color: #edf5ff;
+  background: #0b1324;
+}
+
+.connectionNotice {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: rgba(76, 170, 246, .045);
+}
+
+.connectionNotice p {
+  margin: 0;
+  color: var(--muted);
+  font-size: .83rem;
+  line-height: 1.55;
+}
+
+.chartEmpty {
+  display: grid;
+  min-height: 240px;
+  align-content: center;
+  justify-items: center;
+  gap: 10px;
+  margin-top: 24px;
+  padding: 25px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 12px;
+  background: rgba(4, 10, 22, .45);
+  text-align: center;
+}
+
+.chartEmpty h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.chartEmpty p {
+  max-width: 450px;
+  margin: 0;
+  color: var(--muted);
+  font-size: .84rem;
+  line-height: 1.55;
+}
+
+.chartFrame {
+  overflow: hidden;
+  margin-top: 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #081222;
+}
+
+.chartArea {
+  width: 100%;
+  height: 360px;
+}
+
+.chartSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 20px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: .74rem;
+  line-height: 1.5;
+}
+
+.chartSummary strong {
+  color: var(--text);
+}
+
+.chartAttribution {
+  margin: 0;
+  padding: 12px 14px;
+  border-top: 1px solid var(--line);
+  color: var(--dim);
+  font-size: .68rem;
+  line-height: 1.6;
+}
+
+.chartAttribution a {
+  color: var(--muted);
+  text-underline-offset: 3px;
+}
+
+.marketDetails {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 20px 0 0;
+}
+
+.marketDetails div {
+  min-width: 0;
+}
+
+.marketDetails dt {
+  color: var(--dim);
+  font-size: .71rem;
+  line-height: 1.5;
+}
+
+.marketDetails dd {
+  margin: 4px 0 0;
+  color: var(--text);
+  font-size: .79rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.dataNote {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: .76rem;
+  line-height: 1.6;
+}
+
+.analysisActions {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px !important;
+}
+
+.analysisBody {
+  min-width: 0;
+}
+
+.analysisText {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.provenance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 14px;
+  color: var(--dim);
+  font-size: .7rem;
+  line-height: 1.5;
+}
+
+.provenance strong {
+  color: var(--teal-soft);
+}
+
+.evidenceDetails {
+  margin-top: 15px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  background: rgba(4, 10, 22, .35);
+  font-size: .78rem;
+  line-height: 1.65;
+}
+
+.evidenceDetails summary {
+  padding: 10px 13px;
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.evidenceDetails > div {
+  padding: 0 13px 13px;
+}
+
+.evidenceDetails h3 {
+  margin: 14px 0 7px;
+  color: var(--teal-soft);
+  font-size: .76rem;
+}
+
+.evidenceDetails ul {
+  padding-left: 18px;
+  margin: 7px 0;
+}
+
+.evidenceDetails li + li {
+  margin-top: 6px;
+}
+
+.evidenceDetails code {
+  color: var(--muted);
+  font-size: .68rem;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 650px) {
+  .watchlistActions {
+    justify-content: flex-start;
+  }
+
+  .chartControls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .controlLabel {
+    flex-basis: auto;
+  }
+
+  .chartArea {
+    height: 280px;
+  }
+
+  .marketDetails {
+    grid-template-columns: 1fr;
+  }
+
+  .analysisActions {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+}

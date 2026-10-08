@@ -4,25 +4,35 @@
 // rewrites and the production Nginx proxy. Provider URLs stay server-side.
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? '/api/v1';
 let accessToken: string | null = null;
+let refreshRequest: Promise<boolean> | null = null;
 
 type ApiError = Error & { status?: number };
 
 export function setAccessToken(token: string | null): void { accessToken = token; }
 
-async function refreshToken(): Promise<boolean> {
-  const response = await fetch(`${apiBaseUrl}/auth/refresh`, { method: 'POST', credentials: 'include' });
-  if (!response.ok) return false;
-  const body = await response.json() as { accessToken: string };
-  accessToken = body.accessToken;
-  return true;
+function refreshToken(): Promise<boolean> {
+  if (!refreshRequest) {
+    refreshRequest = (async () => {
+      const response = await fetch(`${apiBaseUrl}/auth/refresh`, { method: 'POST', credentials: 'include' });
+      if (!response.ok) return false;
+      const body = await response.json() as { accessToken: string };
+      accessToken = body.accessToken;
+      return true;
+    })().finally(() => { refreshRequest = null; });
+  }
+  return refreshRequest;
 }
 
 export async function api<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+  const requestToken = accessToken;
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
-  if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
+  if (requestToken) headers.set('Authorization', `Bearer ${requestToken}`);
   const response = await fetch(`${apiBaseUrl}${path}`, { ...init, headers, credentials: 'include' });
-  if (response.status === 401 && retry && await refreshToken()) return api<T>(path, init, false);
+  if (response.status === 401 && retry) {
+    // Another request may already have rotated the session while this one was in flight.
+    if ((accessToken && accessToken !== requestToken) || await refreshToken()) return api<T>(path, init, false);
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => null) as { message?: string | string[] } | null;
     const error = new Error(Array.isArray(body?.message) ? body.message.join(', ') : body?.message ?? 'Something went wrong.') as ApiError;
@@ -75,6 +85,34 @@ export type Only1Core = { id: string; name: string; description: string | null; 
 export type StrategyRule = { id?: string; category: string; condition: string; value?: string | null; priority: number };
 export type Strategy = { id: string; name: string; description?: string | null; timeframe: string | null; status: 'draft' | 'active'; only1CoreId: string; rules?: StrategyRule[] };
 export type MarketMonitor = { id: string; symbol: string; marketType: string; timeframe: string; status: 'active' | 'paused' };
+export type MarketCapabilities = { provider: 'twelve-data'; configured: boolean; supportedTimeframes: string[] };
+export type MarketBar = { time: number; open: number; high: number; low: number; close: number; volume?: number };
+export type MarketCandles = {
+  provider: 'twelve-data';
+  symbol: string;
+  timeframe: string;
+  currency: string | null;
+  exchange: string | null;
+  timezone: string;
+  fetchedAt: string;
+  lastBarAt: string;
+  bars: MarketBar[];
+  cached: boolean;
+};
+export type AnalysisRuleEvidence = { id: string; category: string; condition: string };
+export type AnalysisEvidence = {
+  score?: number;
+  outcome?: 'qualified' | 'insufficient';
+  matchedRules?: AnalysisRuleEvidence[];
+  unmatchedRules?: AnalysisRuleEvidence[];
+  provider?: 'openai';
+  model?: string;
+  limitations?: string[];
+  ruleReferences?: string[];
+  generatedAt?: string;
+  contextSource?: 'manual';
+};
+export type SavedAnalysis = { id: string; title: string; summary: string; createdAt: string; evidence?: AnalysisEvidence };
 export type UserProfile = { displayName: string | null; timezone: string | null; bio: string | null; updatedAt?: string };
 export type CurrentUser = { id: string; email: string; role: string; emailVerifiedAt: string | null; profile: UserProfile | null };
 export type AppNotification = { id: string; type: string; title: string; body: string; readAt: string | null; createdAt: string };
