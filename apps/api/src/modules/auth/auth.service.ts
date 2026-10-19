@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, Logger, UnauthorizedException } from '
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
-import { DataSource, IsNull, Repository } from 'typeorm';
+import { DataSource, IsNull, MoreThan, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PreferredStrategy, UserProfile } from '../users/entities/user-profile.entity';
 import { User } from '../users/entities/user.entity';
@@ -85,10 +85,13 @@ export class AuthService {
   async verifyEmail(token: string): Promise<void> {
     const record = await this.findMatchingToken(AuthTokenType.EMAIL_VERIFICATION, token);
     if (!record || record.expiresAt <= new Date()) throw new UnauthorizedException('Invalid or expired verification token.');
-    const verifiedAt = new Date();
-    const consumed = await this.authTokens.update({ id: record.id, usedAt: IsNull() }, { usedAt: verifiedAt });
-    if (consumed.affected !== 1) throw new UnauthorizedException('Invalid or expired verification token.');
-    await this.users.update(record.userId, { emailVerifiedAt: verifiedAt });
+    await this.dataSource.transaction(async (manager) => {
+      const verifiedAt = new Date();
+      const consumed = await manager.update(AuthToken, { id: record.id, usedAt: IsNull(), expiresAt: MoreThan(verifiedAt) }, { usedAt: verifiedAt });
+      if (consumed.affected !== 1) throw new UnauthorizedException('Invalid or expired verification token.');
+      const updated = await manager.update(User, { id: record.userId }, { emailVerifiedAt: verifiedAt });
+      if (updated.affected !== 1) throw new UnauthorizedException('Invalid or expired verification token.');
+    });
   }
 
   async requestPasswordReset(email: string): Promise<void> {
@@ -108,12 +111,23 @@ export class AuthService {
     const user = await this.users.findOneBy({ id: record.userId, isActive: true });
     if (!user) throw new UnauthorizedException('Invalid or expired password reset token.');
 
-    const resetAt = new Date();
-    const consumed = await this.authTokens.update({ id: record.id, usedAt: IsNull() }, { usedAt: resetAt });
-    if (consumed.affected !== 1) throw new UnauthorizedException('Invalid or expired password reset token.');
-
-    await this.users.update(user.id, { passwordHash: await bcrypt.hash(password, 12) });
-    await this.sessions.update({ userId: user.id, revokedAt: IsNull() }, { revokedAt: resetAt });
+    // Compute the expensive hash before holding database locks. Consume the
+    // link, change the password and revoke sessions as one atomic operation.
+    const passwordHash = await bcrypt.hash(password, 12);
+    await this.dataSource.transaction(async (manager) => {
+      // Login and refresh acquire the same user lock before issuing sessions.
+      // A reset can therefore revoke every session issued before it commits.
+      const lockedUser = await manager.findOne(User, {
+        select: { id: true }, where: { id: user.id, isActive: true }, lock: { mode: 'pessimistic_write' },
+      });
+      if (!lockedUser) throw new UnauthorizedException('Invalid or expired password reset token.');
+      const resetAt = new Date();
+      const consumed = await manager.update(AuthToken, { id: record.id, usedAt: IsNull(), expiresAt: MoreThan(resetAt) }, { usedAt: resetAt });
+      if (consumed.affected !== 1) throw new UnauthorizedException('Invalid or expired password reset token.');
+      const updated = await manager.update(User, { id: user.id, isActive: true }, { passwordHash });
+      if (updated.affected !== 1) throw new UnauthorizedException('Invalid or expired password reset token.');
+      await manager.update(RefreshSession, { userId: user.id, revokedAt: IsNull() }, { revokedAt: resetAt });
+    });
   }
 
   async login(email: string, password: string): Promise<AuthResult> {
@@ -123,7 +137,18 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password.');
     }
     if (!user.emailVerifiedAt) throw new UnauthorizedException('Invalid email or password.');
-    return this.createSession(user.id);
+    return this.dataSource.transaction(async (manager) => {
+      const lockedUser = await manager.findOne(User, {
+        select: { id: true, passwordHash: true, emailVerifiedAt: true },
+        where: { id: user.id, isActive: true }, lock: { mode: 'pessimistic_write' },
+      });
+      // The password may have changed while bcrypt was checking the original
+      // hash. Never issue a new session against that stale credential.
+      if (!lockedUser || !lockedUser.emailVerifiedAt || lockedUser.passwordHash !== user.passwordHash) {
+        throw new UnauthorizedException('Invalid email or password.');
+      }
+      return this.createSession(user.id, manager.getRepository(RefreshSession));
+    });
   }
 
   async refresh(refreshToken: string | undefined): Promise<AuthResult> {
@@ -133,11 +158,20 @@ export class AuthService {
     if (!session || session.userId !== payload.sub || session.revokedAt || session.expiresAt <= new Date() || !(await bcrypt.compare(refreshToken, session.tokenHash))) {
       throw new UnauthorizedException('Session has expired.');
     }
-    const user = await this.users.findOneBy({ id: payload.sub, isActive: true });
-    if (!user) throw new UnauthorizedException('Session has expired.');
-    const consumed = await this.sessions.update({ id: session.id, revokedAt: IsNull() }, { revokedAt: new Date() });
-    if (consumed.affected !== 1) throw new UnauthorizedException('Session has expired.');
-    return this.createSession(payload.sub);
+    return this.dataSource.transaction(async (manager) => {
+      const lockedUser = await manager.findOne(User, {
+        select: { id: true }, where: { id: payload.sub, isActive: true }, lock: { mode: 'pessimistic_write' },
+      });
+      if (!lockedUser) throw new UnauthorizedException('Session has expired.');
+      const sessions = manager.getRepository(RefreshSession);
+      const rotatedAt = new Date();
+      const consumed = await sessions.update(
+        { id: session.id, userId: payload.sub, revokedAt: IsNull(), expiresAt: MoreThan(rotatedAt) },
+        { revokedAt: rotatedAt },
+      );
+      if (consumed.affected !== 1) throw new UnauthorizedException('Session has expired.');
+      return this.createSession(payload.sub, sessions);
+    });
   }
 
   async logout(refreshToken?: string): Promise<void> {
@@ -181,9 +215,9 @@ export class AuthService {
     }
   }
 
-  private async createSession(userId: string): Promise<AuthResult> {
+  private async createSession(userId: string, sessions: Repository<RefreshSession>): Promise<AuthResult> {
     const refreshTokenTtl = getRefreshTokenTtl();
-    const session = await this.sessions.save(this.sessions.create({
+    const session = await sessions.save(sessions.create({
       userId,
       tokenHash: 'pending',
       expiresAt: new Date(Date.now() + getRefreshTokenTtlMilliseconds()),
@@ -191,7 +225,7 @@ export class AuthService {
     }));
     const refreshToken = await this.jwt.signAsync({ sub: userId, sid: session.id, type: 'refresh' }, { expiresIn: refreshTokenTtl });
     session.tokenHash = await bcrypt.hash(refreshToken, 12);
-    await this.sessions.save(session);
+    await sessions.save(session);
     const accessToken = await this.jwt.signAsync({ sub: userId, type: 'access' }, { expiresIn: getAccessTokenTtl() });
     return { accessToken, refreshToken };
   }

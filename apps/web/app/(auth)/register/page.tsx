@@ -4,10 +4,8 @@ import Link from 'next/link';
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { Brand } from '../../../components/brand';
 import { PreferredStrategy, PreferredTrade, RegistrationInput, getStrategySuggestions, register } from '../../../lib/api';
+import { PASSWORD_MAX_BYTES, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, passwordChecks } from '../../../lib/password-policy';
 import styles from './register.module.css';
-
-const PASSWORD_MIN_LENGTH = 6;
-const PASSWORD_MAX_LENGTH = 128;
 
 const tradeOptions: Array<{ value: PreferredTrade; label: string }> = [
   { value: 'crypto', label: 'Crypto' },
@@ -39,16 +37,6 @@ const initialForm: RegistrationForm = {
   customStrategy: '',
 };
 
-function passwordChecks(password: string) {
-  return [
-    { label: `${PASSWORD_MIN_LENGTH}–${PASSWORD_MAX_LENGTH} characters`, passed: password.length >= PASSWORD_MIN_LENGTH && password.length <= PASSWORD_MAX_LENGTH },
-    { label: 'An uppercase letter', passed: /[A-Z]/.test(password) },
-    { label: 'A lowercase letter', passed: /[a-z]/.test(password) },
-    { label: 'A number', passed: /\d/.test(password) },
-    { label: 'A special character', passed: /[^A-Za-z0-9\s]/.test(password) },
-  ];
-}
-
 function getPasswordStrength(password: string): { label: string; tone: 'weak' | 'fair' | 'strong' } {
   if (!password) return { label: 'Start typing to check password strength', tone: 'weak' };
   const score = passwordChecks(password).filter((check) => check.passed).length;
@@ -67,7 +55,7 @@ function validate(form: RegistrationForm): FieldErrors {
 
   if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) errors.email = 'Enter a valid email address.';
   if (!checks.every((check) => check.passed)) {
-    errors.password = `Use ${PASSWORD_MIN_LENGTH}–${PASSWORD_MAX_LENGTH} characters with uppercase, lowercase, number, and special character.`;
+    errors.password = `Use at least ${PASSWORD_MIN_LENGTH} characters with uppercase, lowercase, a number, and a special character, within ${PASSWORD_MAX_BYTES} UTF-8 bytes.`;
   }
   if (form.confirmPassword !== form.password) errors.confirmPassword = 'Passwords do not match.';
   if (form.preferredStrategy === 'custom' && !customStrategy) {
@@ -227,7 +215,7 @@ export default function RegisterPage() {
           </label>
           <div id="password-guidance" className="password-guidance">
             <div className={`password-strength is-${strength.tone}`} aria-live="polite"><span aria-hidden="true" />{strength.label}</div>
-            <p className="password-note">Use all of the following. Passwords longer than {PASSWORD_MAX_LENGTH} characters are not accepted.</p>
+            <p className="password-note">Use all of the following. The limit is {PASSWORD_MAX_BYTES} UTF-8 bytes: up to 72 English characters; some characters use more than one byte.</p>
             <ul className="password-requirements" aria-label="Password requirements">
               {checks.map((check) => <li key={check.label} className={check.passed ? 'is-met' : ''}><span aria-hidden="true">{check.passed ? '✓' : '○'}</span>{check.label}</li>)}
             </ul>

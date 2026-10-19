@@ -32,6 +32,8 @@ jobs:
         run: npm test --workspace=@only1ai/api -- --runInBand --forceExit --testTimeout=15000
       - name: Test browser API session handling
         run: npm run test:session --workspace=@only1ai/web
+      - name: Test browser interface regressions
+        run: npm run test:ui --workspace=@only1ai/web
       - name: Build API
         run: npm run build --workspace=@only1ai/api
       - name: Build web
@@ -94,3 +96,63 @@ jobs:
       - name: Test AI explanations without live requests
         working-directory: services/ai
         run: python -m pytest -q
+  validate-infrastructure:
+    name: Container and production network checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      POSTGRES_PASSWORD: only1ai-ci-ephemeral-password
+      JWT_SECRET: only1ai-ci-test-secret-not-for-production-use-0123456789abcdef
+      WEB_ORIGIN: https://only1ai.example
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Check development ports are loopback-only
+        run: |
+          docker compose -f docker-compose.yml config --format json |
+            jq -e '[.services | to_entries[] | select(.key != "nginx") | .value.ports[] | .host_ip] | all(. == "127.0.0.1")'
+      - name: Check production ports are private
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.production.yml config --format json |
+            jq -e '(.services.nginx.ports | length == 1) and ([.services | to_entries[] | select(.key != "nginx") | ((.value.ports // []) | length)] | all(. == 0))'
+      - name: Build the standalone web image
+        run: docker build -f infrastructure/docker/web.Dockerfile -t only1ai-ci-web .
+      - name: Smoke test proxy, assets, and private response headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker network create only1ai-ci
+          docker run -d --name only1ai-ci-api --network only1ai-ci --network-alias api node:24-alpine node -e 'require("node:http").createServer((req,res)=>res.end(req.headers.authorization||"missing")).listen(3001,"0.0.0.0")'
+          docker run -d --name only1ai-ci-web --network only1ai-ci --network-alias web only1ai-ci-web
+          docker run -d --name only1ai-ci-nginx --network only1ai-ci -p 127.0.0.1:3301:80 -v "$PWD/infrastructure/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro" nginx:1.27-alpine
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3301/ -o /dev/null; then break; fi
+            sleep 1
+          done
+          html="$(curl -fsS http://127.0.0.1:3301/)"
+          script_path="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.js' | sed -n '1p')"
+          test -n "$script_path"
+          curl -fsS "http://127.0.0.1:3301$script_path" -o /dev/null
+          curl -fsS http://127.0.0.1:3301/brand/only1ai-logo.jpg -o /dev/null
+          curl -fsS 'http://127.0.0.1:3301/_next/image?url=%2Fbrand%2Fonly1ai-logo.jpg&w=64&q=75' -o /dev/null
+          test "$(curl -fsS -H 'Authorization: Bearer infra-smoke' http://127.0.0.1:3301/api/v1/users/me)" = 'Bearer infra-smoke'
+          headers="$(curl -fsSI http://127.0.0.1:3301/api/v1/users/me)"
+          printf '%s\n' "$headers" | grep -iq '^cache-control:.*no-store'
+          printf '%s\n' "$headers" | grep -iq '^referrer-policy: no-referrer'
+          curl -fsS 'http://127.0.0.1:3301/verify-email?token=infra-canary-token' -o /dev/null
+          curl -fsS 'http://127.0.0.1:3301/reset-password?token=infra-canary-token' -o /dev/null
+          curl -fsS 'http://127.0.0.1:3301/reset-password/?token=infra-canary-token' -o /dev/null
+          if docker logs only1ai-ci-nginx 2>&1 | grep -Fq 'infra-canary-token'; then
+            echo 'A one-time account token appeared in the proxy log.' >&2
+            exit 1
+          fi
+      - name: Show container logs on failure
+        if: failure()
+        run: |
+          docker logs only1ai-ci-nginx || true
+          docker logs only1ai-ci-web || true
+      - name: Remove smoke-test containers
+        if: always()
+        run: |
+          docker rm -f only1ai-ci-nginx only1ai-ci-web only1ai-ci-api || true
+          docker network rm only1ai-ci || true

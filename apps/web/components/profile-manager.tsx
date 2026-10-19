@@ -13,13 +13,16 @@ export function ProfileManager() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
     api<CurrentUser>('/users/me')
       .then((currentUser) => {
+        if (!mounted) return;
         setUser(currentUser);
         setProfile(currentUser.profile ?? blankProfile);
       })
-      .catch(() => setMessage('Sign in to personalise your workspace.'))
-      .finally(() => setLoading(false));
+      .catch(() => { if (mounted) setMessage('Sign in to personalise your workspace.'); })
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
   }, []);
 
   const initials = useMemo(() => (profile.displayName || user?.email || '01').slice(0, 2).toUpperCase(), [profile.displayName, user?.email]);
@@ -29,7 +32,10 @@ export function ProfileManager() {
     setPending(true);
     setMessage('');
     try {
-      const saved = await api<UserProfile>('/users/me/profile', { method: 'PATCH', body: JSON.stringify(profile) });
+      const saved = await api<UserProfile>('/users/me/profile', {
+        method: 'PATCH',
+        body: JSON.stringify({ displayName: profile.displayName, timezone: profile.timezone, bio: profile.bio }),
+      });
       setProfile(saved);
       setMessage('Your workspace profile has been saved.');
     } catch (error) {
@@ -49,6 +55,7 @@ export function ProfileManager() {
       <span className={`status-badge${user.emailVerifiedAt ? '' : ' is-warning'}`}>{user.emailVerifiedAt ? 'Email verified' : 'Verification pending'}</span>
     </section>
     <form className="profile-form" onSubmit={submit}>
+      <fieldset className="form-controls" disabled={pending}>
       <div className="form-row">
         <label>Display name<input value={profile.displayName ?? ''} onChange={(event) => setProfile((current) => ({ ...current, displayName: event.target.value }))} maxLength={80} placeholder="e.g. Sam" autoComplete="name" /></label>
         <label>Timezone<input value={profile.timezone ?? ''} onChange={(event) => setProfile((current) => ({ ...current, timezone: event.target.value }))} maxLength={64} placeholder="e.g. Africa/Lagos" /></label>
@@ -56,6 +63,7 @@ export function ProfileManager() {
       <label>Workspace note <span className="form-hint">optional</span><textarea value={profile.bio ?? ''} onChange={(event) => setProfile((current) => ({ ...current, bio: event.target.value }))} maxLength={500} placeholder="What kind of market process are you building?" /></label>
       <button className="button" disabled={pending} type="submit">{pending ? 'Saving profile…' : 'Save profile'}</button>
       <p className={`form-status${message && !message.includes('saved') ? ' is-error' : message ? ' is-success' : ''}`} role="status">{message}</p>
+      </fieldset>
     </form>
   </>;
 }

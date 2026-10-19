@@ -2,17 +2,18 @@ import * as assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { INestApplication, Logger, ValidationPipe, VersioningType } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { DataSource } from 'typeorm';
+import { DataSource, IsNull } from 'typeorm';
 import * as cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module';
 import { AuthEmailService } from '../src/modules/auth/auth-email.service';
 import { User } from '../src/modules/users/entities/user.entity';
+import { RefreshSession } from '../src/modules/auth/entities/refresh-session.entity';
 
 /** Real PostgreSQL + HTTP checks. Only this run's fixture users are removed. */
 async function main(): Promise<void> {
   const runId = randomUUID();
   const emails = [`only1ai-smoke-${runId}@example.invalid`, `only1ai-owner-${runId}@example.invalid`];
-  const password = `Test1!${randomBytes(20).toString('hex')}`;
+  const password = `Test1!${randomBytes(33).toString('hex')}`;
   const verificationTokens = new Map<string, string>();
   const resetTokens = new Map<string, string>();
   let app: INestApplication | undefined;
@@ -35,7 +36,7 @@ async function main(): Promise<void> {
     app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.listen(0, '127.0.0.1');
-    source = app.get(DataSource);
+    source = app.get<DataSource>(DataSource);
     const base = await app.getUrl();
     let token: string | undefined;
     let refreshCookie = '';
@@ -62,6 +63,11 @@ async function main(): Promise<void> {
     await request('/auth/register', 'POST', {
       email: emails[0], password: 'weak', traderName: 'Local Smoke Trader', preferredTrade: 'forex', preferredStrategy: 'smc',
     }, 400, false);
+    for (const oversizedPassword of [`Aa1!${'a'.repeat(69)}`, `Aa1!${'é'.repeat(35)}`]) {
+      await request('/auth/register', 'POST', {
+        email: emails[0], password: oversizedPassword, traderName: 'Local Smoke Trader', preferredTrade: 'forex', preferredStrategy: 'smc',
+      }, 400, false);
+    }
     for (const email of emails) {
       await request('/auth/register', 'POST', {
         email, password, traderName: 'Local Smoke Trader', preferredTrade: 'forex', preferredStrategy: 'smc',
@@ -77,6 +83,15 @@ async function main(): Promise<void> {
     assert.ok(token && refreshCookie, 'Login must return both access and refresh credentials');
     await request('/users/me');
     await request('/dashboard/mission-control');
+
+    stage = 'profile saves without readonly or preference fields';
+    const profile = (await request('/users/me/profile', 'PATCH', {
+      displayName: 'Updated Smoke Trader', timezone: 'Africa/Lagos', bio: 'Disposable test profile',
+    })).value;
+    assert.equal(profile.displayName, 'Updated Smoke Trader');
+    const me = (await request('/users/me')).value;
+    assert.equal(me.profile.displayName, 'Updated Smoke Trader');
+    assert.equal(me.profile.preferredTrade, 'forex', 'Profile edits must preserve onboarding preferences');
 
     stage = 'malformed resource identifiers';
     await request('/only1-cores/not-a-uuid', 'GET', undefined, 400);
@@ -118,6 +133,16 @@ async function main(): Promise<void> {
     assert.equal(analysis.evidence.matchedRules.length, 1);
     await request('/analyses?limit=20');
 
+    stage = 'unambiguous manual confluence matching';
+    const collisionStrategy = (await request('/strategies', 'POST', {
+      only1CoreId: core.id, name: 'Delimiter Safety',
+      rules: [{ category: 'Trend::Bullish', condition: 'Close', priority: 80 }],
+    }, 201)).value;
+    const collisionAssessment = (await request('/confluence-assessments', 'POST', {
+      strategyId: collisionStrategy.id, observations: [{ category: 'Trend', condition: 'Bullish::Close' }],
+    }, 201)).value;
+    assert.equal(collisionAssessment.score, 0, 'Distinct category/condition pairs must never falsely match');
+
     stage = 'market configuration and cross-user ownership';
     const monitor = (await request('/market-monitors', 'POST', {
       only1CoreId: core.id, strategyId: strategy.id, symbol: 'EUR/USD', marketType: 'forex', timeframe: '15m',
@@ -151,11 +176,18 @@ async function main(): Promise<void> {
     await request('/auth/refresh', 'POST', undefined, 401, false, refreshed.cookie);
 
     stage = 'password recovery';
+    const recoverySession = await request('/auth/login', 'POST', { email: emails[0], password }, 201, false);
     await request('/auth/password-reset/request', 'POST', { email: emails[0] }, 202, false);
     const resetToken = resetTokens.get(emails[0]);
     assert.ok(resetToken);
     const nextPassword = `Next1!${randomBytes(20).toString('hex')}`;
-    await request('/auth/password-reset/confirm', 'POST', { token: resetToken, password: nextPassword }, 204, false);
+    await request('/auth/password-reset/confirm', 'POST', { token: resetToken, password: `Aa1!${'a'.repeat(69)}` }, 400, false);
+    await Promise.all([
+      request('/auth/password-reset/confirm', 'POST', { token: resetToken, password: nextPassword }, 204, false),
+      request('/auth/refresh', 'POST', undefined, [201, 401], false, recoverySession.cookie),
+    ]);
+    assert.equal(await source.getRepository(RefreshSession).count({ where: { userId: me.id, revokedAt: IsNull() } }), 0,
+      'A concurrent refresh must not leave an active session after password reset');
     await request('/auth/password-reset/confirm', 'POST', { token: resetToken, password: nextPassword }, 401, false);
     await request('/auth/login', 'POST', { email: emails[0], password }, 401, false);
     await request('/auth/login', 'POST', { email: emails[0], password: nextPassword }, 201, false);

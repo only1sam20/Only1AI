@@ -1,6 +1,6 @@
 import { Transform } from 'class-transformer';
-import { IsEmail, IsEnum, IsString, Matches, MaxLength, MinLength, ValidateIf } from 'class-validator';
-import { PASSWORD_COMPLEXITY_PATTERN, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, PASSWORD_POLICY_MESSAGE } from '../password-policy';
+import { IsEmail, IsEnum, IsString, Matches, MaxLength, MinLength, Validate, ValidateIf } from 'class-validator';
+import { PASSWORD_COMPLEXITY_PATTERN, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, PASSWORD_POLICY_MESSAGE, PasswordMaxBytesConstraint } from '../password-policy';
 import { PreferredStrategy, PreferredTrade } from '../../users/entities/user-profile.entity';
 
 export class RegisterDto {
@@ -12,6 +12,7 @@ export class RegisterDto {
   @IsString()
   @MinLength(PASSWORD_MIN_LENGTH)
   @MaxLength(PASSWORD_MAX_LENGTH)
+  @Validate(PasswordMaxBytesConstraint)
   @Matches(PASSWORD_COMPLEXITY_PATTERN, { message: PASSWORD_POLICY_MESSAGE })
   password!: string;
 

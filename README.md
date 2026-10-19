@@ -85,6 +85,7 @@ npm run lint --workspace=@only1ai/api
 npm run lint --workspace=@only1ai/web
 npm test --workspace=@only1ai/api -- --runInBand --forceExit --testTimeout=15000
 npm run test:session --workspace=@only1ai/web
+npm run test:ui --workspace=@only1ai/web
 npm run build --workspace=@only1ai/api
 npm run build --workspace=@only1ai/web
 .\services\ai\.venv\Scripts\python.exe -m pytest services/ai/tests -q
@@ -97,6 +98,16 @@ npm run test:database --workspace=@only1ai/api
 ```
 
 This check creates uniquely named temporary fixture accounts and removes only those accounts and their cascaded records afterward. Email delivery is mocked, and it makes no paid provider calls. Existing user accounts and records are not targeted. It requires the same `DATABASE_*` settings and `JWT_SECRET` as normal API startup.
+
+The UI regression suite exercises component behavior and Strict Mode effect replay with mocked dependencies. It is not a substitute for full browser/end-to-end acceptance tests or live provider validation. New and reset passwords are limited to 72 UTF-8 bytes to avoid bcrypt truncation; existing longer-password users should reset their password. See [authentication](docs/authentication.md).
+
+## Vercel interface preview
+
+This is an npm-workspace monorepo. Import the GitHub repository with **Root Directory `apps/web`**, **Next.js** as the framework, `npm ci --legacy-peer-deps` as the install command, and `npm run build` as the build command. Keep the default Next.js output directory. The repository root package does not declare Next.js and must not be selected as the frontend project root.
+
+A Vercel frontend deployment alone does not deploy NestJS, PostgreSQL, or FastAPI. Without a hosted backend it is an interface preview, not a working account/analysis deployment. To connect it, set the frontend's server-side `API_URL` to the backend's HTTPS origin (no trailing slash or `/api/v1` suffix) and redeploy. Leave `NEXT_PUBLIC_API_URL` unset so browser requests use the same-origin `/api/v1` rewrite and the existing refresh-cookie policy.
+
+On the backend, set `WEB_ORIGIN` to the canonical deployed frontend origin, configure database/JWT/email secrets, and run migrations before accepting traffic. Configure the private AI service separately. Do not put database passwords, Resend/OpenAI keys, or `AI_SERVICE_TOKEN` in browser-facing `NEXT_PUBLIC_*` variables. A `.vercel.app` address is enough for a website preview, but not a domain you control for public transactional-email sending.
 
 ## Repository layout
 

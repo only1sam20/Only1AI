@@ -62,7 +62,7 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
     <div className="app-content">
       <header className="app-topbar">
         <button className="menu-button" type="button" aria-label={mobileMenuOpen ? 'Close navigation' : 'Open navigation'} aria-controls="mobile-navigation" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen((open) => !open)}><span /><span /><span /></button>
-        <Link className="mobile-brand" href="/mission-control"><Brand /></Link>
+        <div className="mobile-brand"><Brand /></div>
         <div className="system-status"><span className="status-dot" />Workspace ready</div>
         <Link className="account-link" href="/profile"><span className="account-avatar">01</span><span>My profile</span></Link>
       </header>

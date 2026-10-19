@@ -82,7 +82,7 @@ export async function resetPassword(token: string, password: string): Promise<vo
 }
 
 export type Only1Core = { id: string; name: string; description: string | null; status: 'active' | 'paused'; analysisIntervalMinutes: number };
-export type StrategyRule = { id?: string; category: string; condition: string; value?: string | null; priority: number };
+export type StrategyRule = { id?: string; category: string; condition: string; value?: Record<string, unknown> | null; priority: number };
 export type Strategy = { id: string; name: string; description?: string | null; timeframe: string | null; status: 'draft' | 'active'; only1CoreId: string; rules?: StrategyRule[] };
 export type MarketMonitor = { id: string; symbol: string; marketType: string; timeframe: string; status: 'active' | 'paused' };
 export type MarketCapabilities = { provider: 'twelve-data'; configured: boolean; supportedTimeframes: string[] };

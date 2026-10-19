@@ -17,8 +17,11 @@ export class ConfluenceService {
       if (monitor.only1CoreId !== strategy.only1CoreId || (monitor.strategyId && monitor.strategyId !== strategy.id)) throw new BadRequestException('Market monitor does not match this strategy.');
     }
     const rules = await this.rules.findBy({ strategyId: strategy.id });
-    const observed = new Set(dto.observations.map((o) => `${o.category.trim().toLowerCase()}::${o.condition.trim().toLowerCase()}`));
-    const matched = rules.filter((rule) => observed.has(`${rule.category.toLowerCase()}::${rule.condition.toLowerCase()}`));
+    // Encoding a pair avoids collisions when a category or condition itself
+    // contains a separator such as "::".
+    const key = (category: string, condition: string) => JSON.stringify([category.trim().toLowerCase(), condition.trim().toLowerCase()]);
+    const observed = new Set(dto.observations.map((observation) => key(observation.category, observation.condition)));
+    const matched = rules.filter((rule) => observed.has(key(rule.category, rule.condition)));
     const total = rules.reduce((sum, rule) => sum + rule.priority, 0);
     const score = total ? Math.round((matched.reduce((sum, rule) => sum + rule.priority, 0) / total) * 100) : 0;
     const matchedIds = new Set(matched.map((rule) => rule.id));

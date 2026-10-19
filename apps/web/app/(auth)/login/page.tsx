@@ -5,6 +5,7 @@ import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Brand } from '../../../components/brand';
 import { login } from '../../../lib/api';
+import { safeReturnPath } from '../../../lib/auth-navigation';
 
 export default function LoginPage() {
   const [message, setMessage] = useState('');
@@ -20,10 +21,7 @@ export default function LoginPage() {
     try {
       await login(String(form.get('email')), String(form.get('password')));
       const returnTo = new URLSearchParams(window.location.search).get('returnTo');
-      const safeReturnTo = returnTo?.startsWith('/') && !returnTo.startsWith('//')
-        ? returnTo
-        : '/mission-control';
-      router.push(safeReturnTo);
+      router.push(safeReturnPath(returnTo));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Unable to sign in.');
     } finally {

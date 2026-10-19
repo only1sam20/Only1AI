@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test:session": "node --experimental-strip-types --test tests/api-session.test.mjs"
+    "test:session": "node --experimental-strip-types --test tests/api-session.test.mjs",
+    "test:ui": "node --experimental-strip-types --test tests/ui-regressions.test.mjs"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.4",

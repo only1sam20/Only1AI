@@ -4,16 +4,7 @@ import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
 import { Brand } from '../../../components/brand';
 import { resetPassword } from '../../../lib/api';
-
-const PASSWORD_MIN_LENGTH = 6;
-const PASSWORD_MAX_LENGTH = 128;
-const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9\s])[\s\S]+$/;
-
-function hasStrongPassword(password: string): boolean {
-  return password.length >= PASSWORD_MIN_LENGTH
-    && password.length <= PASSWORD_MAX_LENGTH
-    && passwordPattern.test(password);
-}
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, hasStrongPassword } from '../../../lib/password-policy';
 
 export default function ResetPasswordPage() {
   const [token, setToken] = useState<string | null>(null);
@@ -32,7 +23,7 @@ export default function ResetPasswordPage() {
     const password = String(form.get('password'));
     const confirmation = String(form.get('confirmation'));
     if (!hasStrongPassword(password)) {
-      setMessage('Use 6 to 128 characters with uppercase, lowercase, a number, and a special character.');
+      setMessage('Use at least 6 characters with uppercase, lowercase, a number, and a special character, within 72 UTF-8 bytes.');
       return;
     }
     if (password !== confirmation) { setMessage('The passwords do not match.'); return; }
@@ -55,7 +46,7 @@ export default function ResetPasswordPage() {
         <Brand />
         <p className="eyebrow">ACCOUNT RECOVERY</p>
         <h1>Choose a new password.</h1>
-        <p className="auth-copy">Use a unique 6-128 character password with uppercase, lowercase, a number, and a special character. Reset links can only be used once.</p>
+        <p className="auth-copy">Use a unique password with at least 6 characters, including uppercase, lowercase, a number, and a special character. The limit is 72 UTF-8 bytes: up to 72 English characters; some characters use more than one byte. Reset links can only be used once.</p>
         <label htmlFor="reset-password">New password
           <span className="password-input-wrap">
             <input id="reset-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} placeholder="Create a strong password" disabled={!token || complete} required />
